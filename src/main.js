@@ -102,6 +102,9 @@ function normalize(obj,{height=null,length=null,modelYaw=-Math.PI/2}={}){
 }
 
 const player=new THREE.Group(),bike=new THREE.Group(),car=new THREE.Group();
+player.rotation.order='YXZ';
+bike.rotation.order='YXZ';
+car.rotation.order='YXZ';
 scene.add(player,bike,car);
 const SPAWN={player:{x:0,z:22},moto:{x:3.2,z:22},car:{x:-3.2,z:22}};
 player.position.set(SPAWN.player.x,track.groundHeight(SPAWN.player.x,SPAWN.player.z),SPAWN.player.z);
@@ -425,8 +428,8 @@ function walk(dt){
 
   const wantedX=locomotion.vx*dt,wantedZ=locomotion.vz*dt;
   const step=track.moveXZ(player.position,wantedX,wantedZ,.33,.31);
-  if(Math.abs(step.x-wantedX)>.002)locomotion.vx=0;
-  if(Math.abs(step.z-wantedZ)>.002)locomotion.vz=0;
+  if(Math.abs(step.x-wantedX)>.02)locomotion.vx=0;
+  if(Math.abs(step.z-wantedZ)>.02)locomotion.vz=0;
 
   const horizontalSpeed=Math.hypot(step.x,step.z)/Math.max(dt,1e-5);
   if(horizontalSpeed>.04)player.rotation.y=Math.atan2(step.x,step.z);

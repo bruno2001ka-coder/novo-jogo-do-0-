@@ -134,6 +134,48 @@ const vehicles={
   }
 };
 
+function makeRenderState(obj){
+  return{
+    obj,
+    prevPos:obj.position.clone(),currPos:obj.position.clone(),
+    prevQuat:obj.quaternion.clone(),currQuat:obj.quaternion.clone()
+  };
+}
+const renderStates=[
+  makeRenderState(player),makeRenderState(bike),makeRenderState(car)
+];
+function beginPhysicsStep(){
+  for(const s of renderStates){
+    s.prevPos.copy(s.currPos);
+    s.prevQuat.copy(s.currQuat);
+  }
+}
+function endPhysicsStep(){
+  for(const s of renderStates){
+    s.currPos.copy(s.obj.position);
+    s.currQuat.copy(s.obj.quaternion);
+  }
+}
+function snapRenderStates(){
+  for(const s of renderStates){
+    s.prevPos.copy(s.obj.position);s.currPos.copy(s.obj.position);
+    s.prevQuat.copy(s.obj.quaternion);s.currQuat.copy(s.obj.quaternion);
+  }
+}
+function applyRenderInterpolation(alpha){
+  alpha=THREE.MathUtils.clamp(alpha,0,1);
+  for(const s of renderStates){
+    s.obj.position.lerpVectors(s.prevPos,s.currPos,alpha);
+    s.obj.quaternion.copy(s.prevQuat).slerp(s.currQuat,alpha);
+  }
+}
+function restorePhysicsTransforms(){
+  for(const s of renderStates){
+    s.obj.position.copy(s.currPos);
+    s.obj.quaternion.copy(s.currQuat);
+  }
+}
+
 function setCharacterAction(action,fade=.16){
   if(!action||character.current===action)return;
   action.enabled=true;action.paused=false;action.reset();action.setEffectiveWeight(1);action.play();
@@ -251,7 +293,7 @@ function exitVehicle(){
   player.rotation.x=0;player.rotation.z=0;
   player.visible=true;restoreCharacterTransform();
   locomotion.vx=0;locomotion.vz=0;velY=0;locomotion.grounded=true;locomotion.coyote=.1;
-  mode='foot';document.body.classList.remove('driving');
+  mode='foot';document.body.classList.remove('driving');snapRenderStates();
 }
 
 function toggleVehicle(name){
@@ -264,6 +306,7 @@ function toggleVehicle(name){
     player.position.copy(v.obj.position);
     player.rotation.copy(v.obj.rotation);
   }
+  snapRenderStates();
 }
 
 function toggleNearest(){
@@ -290,6 +333,7 @@ function reset(){
     v.obj.position.set(s.x,track.groundHeight(s.x,s.z),s.z);
     v.obj.rotation.set(0,0,0);v.speed=0;v.steerState=0;resetWheels(v);
   }
+  snapRenderStates();
 }
 
 function animateFallbackCharacter(moving,running,pilot,dt){
@@ -567,16 +611,22 @@ function frame(now){
   accumulator=Math.min(accumulator+rawDt,FIXED_DT*MAX_PHYSICS_STEPS);
   let steps=0;
   while(accumulator>=FIXED_DT&&steps<MAX_PHYSICS_STEPS){
+    beginPhysicsStep();
     simulate(FIXED_DT);
+    endPhysicsStep();
     accumulator-=FIXED_DT;
     steps++;
   }
+
+  const renderAlpha=accumulator/FIXED_DT;
+  applyRenderInterpolation(renderAlpha);
 
   if(mode==='foot')updateCharacterAnimation(rawDt,characterMotion);
   else if(mode==='moto')updateCharacterAnimation(rawDt,{pilot:true});
 
   updateCamera(rawDt);
   renderer.render(scene,camera);
+  restorePhysicsTransforms();
   profiler.frame(rawDt);
 
   fpsFrames++;fpsTime+=rawDt;

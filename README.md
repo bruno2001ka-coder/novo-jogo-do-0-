@@ -27,3 +27,6 @@ Os três GLBs são carregados diretamente do repositório antigo apenas como fon
 - E: veículo mais próximo / sair
 - R: reset
 - Mouse ou arraste no lado direito: câmera
+
+
+Deploy: GitHub Pages automático via Actions.

@@ -480,8 +480,17 @@ function applyVehicleGroundPose(v,steerAngleValue,dt,name){
     :0;
   const rollTarget=pose.roll+turnLean;
   const leanClearance=name==='moto'?Math.abs(Math.sin(turnLean))*v.halfWidth:0;
-  v.obj.position.y=pose.y+leanClearance;
   v.obj.rotation.z=THREE.MathUtils.lerp(v.obj.rotation.z,rollTarget,expAlpha(10,dt));
+
+  // O root dos modelos fica na base do veículo. Ao inclinar em X/Z, parte da carroceria
+  // pode girar para baixo do piso. Compensa exatamente essa queda geométrica.
+  const pitchClearance=Math.abs(Math.sin(v.obj.rotation.x))*v.halfLength;
+  const rollClearance=Math.abs(Math.sin(v.obj.rotation.z))*v.halfWidth;
+  const baseFloor=track.groundHeight(v.obj.position.x,v.obj.position.z);
+  v.obj.position.y=Math.max(
+    pose.y+leanClearance+pitchClearance+rollClearance+.025,
+    baseFloor+.025
+  );
   return pose;
 }
 

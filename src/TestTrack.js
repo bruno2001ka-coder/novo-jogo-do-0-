@@ -997,6 +997,203 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   entryPillar(entryZ1,'pilarEntradaCasaFundo');
 
   // ---------------------------------------------------------------------------
+  // PORTÃO DE CORRER INTELIGENTE
+  // Detecta personagem/veículo dos dois lados, mantém aberto durante a travessia
+  // e só volta a fechar quando a zona de segurança estiver livre.
+  // ---------------------------------------------------------------------------
+  const SLIDING_GATE={
+    x:LOT.x1-.22,
+    z0:LOT.z0+.62,
+    z1:entryZ1-.20,
+    h:1.42
+  };
+  SLIDING_GATE.length=SLIDING_GATE.z1-SLIDING_GATE.z0;
+  SLIDING_GATE.closedZ=(SLIDING_GATE.z0+SLIDING_GATE.z1)/2;
+  SLIDING_GATE.openZ=SLIDING_GATE.closedZ+SLIDING_GATE.length+.38;
+
+  const gateMetalMat=mat(0x3f4546,.72);
+  const gateFrameMat=mat(0x2b2f30,.68);
+  const gateGroup=new THREE.Group();
+  gateGroup.name='portaoCorrerInteligente';
+  gateGroup.position.set(SLIDING_GATE.x,0,SLIDING_GATE.closedZ);
+  houseGroup.add(gateGroup);
+
+  // Quadro externo.
+  const gateTop=new THREE.Mesh(
+    new THREE.BoxGeometry(.14,.12,SLIDING_GATE.length),
+    gateFrameMat
+  );
+  gateTop.position.set(0,SLIDING_GATE.h-.08,0);
+  gateGroup.add(gateTop);
+
+  const gateBottom=new THREE.Mesh(
+    new THREE.BoxGeometry(.14,.12,SLIDING_GATE.length),
+    gateFrameMat
+  );
+  gateBottom.position.set(0,.12,0);
+  gateGroup.add(gateBottom);
+
+  for(const z of[-SLIDING_GATE.length/2+.08,SLIDING_GATE.length/2-.08]){
+    const side=new THREE.Mesh(
+      new THREE.BoxGeometry(.14,SLIDING_GATE.h,.12),
+      gateFrameMat
+    );
+    side.position.set(0,SLIDING_GATE.h/2,z);
+    gateGroup.add(side);
+  }
+
+  // Réguas verticais metálicas: visual residencial sem fechar totalmente a visão.
+  const slatCount=13;
+  for(let i=0;i<slatCount;i++){
+    const t=i/(slatCount-1);
+    const z=THREE.MathUtils.lerp(
+      -SLIDING_GATE.length/2+.22,
+      SLIDING_GATE.length/2-.22,
+      t
+    );
+    const slat=new THREE.Mesh(
+      new THREE.BoxGeometry(.10,SLIDING_GATE.h-.22,.08),
+      gateMetalMat
+    );
+    slat.position.set(0,SLIDING_GATE.h/2,z);
+    gateGroup.add(slat);
+  }
+
+  // Trilho visível no piso.
+  const gateRail=new THREE.Mesh(
+    new THREE.BoxGeometry(.11,.035,SLIDING_GATE.length*2+.85),
+    metalMat
+  );
+  gateRail.position.set(
+    SLIDING_GATE.x,
+    .055,
+    SLIDING_GATE.closedZ+SLIDING_GATE.length/2+.20
+  );
+  gateRail.name='trilhoPortaoCorrer';
+  houseGroup.add(gateRail);
+
+  // Motor lateral e luz indicadora.
+  const gateMotor=new THREE.Mesh(
+    new THREE.BoxGeometry(.62,.62,.48),
+    gateFrameMat
+  );
+  gateMotor.position.set(
+    SLIDING_GATE.x-.18,
+    .31,
+    entryZ1+.46
+  );
+  gateMotor.name='motorPortaoCorrer';
+  houseGroup.add(gateMotor);
+
+  const gateLampMat=new THREE.MeshStandardMaterial({
+    color:0xffa42b,
+    emissive:0xff6a00,
+    emissiveIntensity:2.2,
+    roughness:.45
+  });
+  const gateLamp=new THREE.Mesh(
+    new THREE.SphereGeometry(.09,12,8),
+    gateLampMat
+  );
+  gateLamp.position.set(
+    SLIDING_GATE.x-.18,
+    .76,
+    entryZ1+.46
+  );
+  gateLamp.name='luzPortaoAutomatico';
+  houseGroup.add(gateLamp);
+
+  let slidingGateCollider=addBoxCollider({
+    cx:SLIDING_GATE.x,
+    cz:SLIDING_GATE.closedZ,
+    w:.22,
+    d:SLIDING_GATE.length,
+    h:SLIDING_GATE.h,
+    label:'portao-correr-fechado',
+    owner:'casa-portao'
+  });
+
+  const slidingGateState={
+    progress:0,
+    target:0,
+    hold:0
+  };
+
+  function updateSlidingGate(dt,targetPosition){
+    if(!targetPosition)return;
+
+    const gateCenterX=SLIDING_GATE.x;
+    const gateCenterZ=SLIDING_GATE.closedZ;
+    const dx=targetPosition.x-gateCenterX;
+    const dz=targetPosition.z-gateCenterZ;
+    const distance=Math.hypot(dx,dz);
+
+    // Zona de aproximação dos dois lados da entrada.
+    const approaching=
+      Math.abs(dz)<5.2&&
+      Math.abs(dx)<8.2;
+
+    // Zona de segurança impede fechamento sobre personagem, carro ou moto.
+    const crossing=
+      Math.abs(dx)<3.0&&
+      targetPosition.z>SLIDING_GATE.z0-1.05&&
+      targetPosition.z<SLIDING_GATE.z1+1.05;
+
+    if(approaching||crossing||distance<7.2){
+      slidingGateState.target=1;
+      slidingGateState.hold=1.15;
+    }else{
+      slidingGateState.hold=Math.max(0,slidingGateState.hold-dt);
+      if(slidingGateState.hold===0)slidingGateState.target=0;
+    }
+
+    // Remove o bloqueio assim que o motor começa a abrir.
+    if(slidingGateState.target===1&&slidingGateCollider){
+      removeCollider(slidingGateCollider);
+      slidingGateCollider=null;
+    }
+
+    const speed=1-Math.exp(-4.2*dt);
+    slidingGateState.progress=THREE.MathUtils.lerp(
+      slidingGateState.progress,
+      slidingGateState.target,
+      speed
+    );
+
+    if(Math.abs(slidingGateState.progress-slidingGateState.target)<.002){
+      slidingGateState.progress=slidingGateState.target;
+    }
+
+    gateGroup.position.z=THREE.MathUtils.lerp(
+      SLIDING_GATE.closedZ,
+      SLIDING_GATE.openZ,
+      slidingGateState.progress
+    );
+
+    // Luz pulsa durante movimento e fica fraca quando parado.
+    const moving=Math.abs(slidingGateState.progress-slidingGateState.target)>.01;
+    gateLamp.material.emissiveIntensity=moving?3.2:.65;
+    gateLamp.scale.setScalar(moving?1.08:1);
+
+    // Colisor só volta depois que o portão terminou de fechar.
+    if(
+      slidingGateState.target===0&&
+      slidingGateState.progress<.015&&
+      !slidingGateCollider
+    ){
+      slidingGateCollider=addBoxCollider({
+        cx:SLIDING_GATE.x,
+        cz:SLIDING_GATE.closedZ,
+        w:.22,
+        d:SLIDING_GATE.length,
+        h:SLIDING_GATE.h,
+        label:'portao-correr-fechado',
+        owner:'casa-portao'
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // QUINTAL RESIDENCIAL: quase todo concretado, com um pequeno canteiro de terra.
   // ---------------------------------------------------------------------------
   const yardSlab=new THREE.Mesh(
@@ -1464,6 +1661,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   function updateWorld(dt,targetPosition){
     updateDoor(dt,targetPosition);
     updateInteriorDoors(dt,targetPosition);
+    updateSlidingGate(dt,targetPosition);
   }
 
   // Evita que uma parede fique entre a câmera e o alvo.

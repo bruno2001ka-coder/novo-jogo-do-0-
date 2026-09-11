@@ -33,6 +33,12 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   const roofMat=mat(0x7a4d35,.88);
   const woodMat=mat(0x68472e,.9);
   const pathMat=mat(0x817a70,.96);
+  const interiorFloorMat=mat(0xa9825d,.88);
+  const bathroomFloorMat=mat(0xc8c5bc,.84);
+  const fabricMat=mat(0x4d514f,.96);
+  const mattressMat=mat(0xe7e0d4,.95);
+  const counterMat=mat(0x756b61,.88);
+  const metalMat=mat(0x9ba0a2,.72);
   const glassMat=new THREE.MeshStandardMaterial({
     color:0x263238,roughness:.28,metalness:.05,
     transparent:true,opacity:.72
@@ -267,7 +273,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   ceiling.name='forroInterno';
   houseGroup.add(ceiling);
 
-  // Luminária física presa ao forro + luz quente real.
+  // Luminárias físicas visíveis, uma por zona principal, sem sombras dinâmicas.
   const lampBaseMat=mat(0x5a5148,.72);
   const lampGlowMat=new THREE.MeshStandardMaterial({
     color:0xffe1aa,
@@ -277,35 +283,40 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     metalness:.02
   });
 
-  const lampBase=new THREE.Mesh(
-    new THREE.CylinderGeometry(.22,.22,.08,16),
-    lampBaseMat
-  );
-  lampBase.position.set(HOUSE.cx,HOUSE.h-.16,HOUSE.cz);
-  lampBase.name='baseLuminariaTeto';
-  houseGroup.add(lampBase);
+  function addCeilingLamp(x,z,name,intensity=9,distance=6.5){
+    const base=new THREE.Mesh(
+      new THREE.CylinderGeometry(.20,.20,.07,14),
+      lampBaseMat
+    );
+    base.position.set(x,HOUSE.h-.15,z);
+    base.name=`baseLuminaria-${name}`;
+    houseGroup.add(base);
 
-  const lampStem=new THREE.Mesh(
-    new THREE.CylinderGeometry(.035,.035,.18,10),
-    woodMat
-  );
-  lampStem.position.set(HOUSE.cx,HOUSE.h-.28,HOUSE.cz);
-  lampStem.name='hasteLuminariaTeto';
-  houseGroup.add(lampStem);
+    const stem=new THREE.Mesh(
+      new THREE.CylinderGeometry(.03,.03,.16,8),
+      woodMat
+    );
+    stem.position.set(x,HOUSE.h-.26,z);
+    stem.name=`hasteLuminaria-${name}`;
+    houseGroup.add(stem);
 
-  const lampBulb=new THREE.Mesh(
-    new THREE.SphereGeometry(.13,16,10),
-    lampGlowMat
-  );
-  lampBulb.position.set(HOUSE.cx,HOUSE.h-.42,HOUSE.cz);
-  lampBulb.name='lampadaVisivelCasa';
-  houseGroup.add(lampBulb);
+    const bulb=new THREE.Mesh(
+      new THREE.SphereGeometry(.12,14,9),
+      lampGlowMat
+    );
+    bulb.position.set(x,HOUSE.h-.39,z);
+    bulb.name=`lampadaVisivel-${name}`;
+    houseGroup.add(bulb);
 
-  // PointLight fica dentro da lâmpada visível; sem sombras dinâmicas no mobile.
-  const interiorLight=new THREE.PointLight(0xffd7a3,18,13,2);
-  interiorLight.position.copy(lampBulb.position);
-  interiorLight.name='luzInternaCasa';
-  houseGroup.add(interiorLight);
+    const light=new THREE.PointLight(0xffd7a3,intensity,distance,2);
+    light.position.copy(bulb.position);
+    light.name=`luzInterna-${name}`;
+    houseGroup.add(light);
+  }
+
+  addCeilingLamp(HOUSE.cx-.4,34.1,'sala-cozinha',12,8.5);
+  addCeilingLamp(-38.7,38.7,'quarto',8.5,5.5);
+  addCeilingLamp(-30.2,39.1,'banheiro',7.5,4.8);
 
   // Rodapé externo levemente saliente para quebrar o aspecto de caixa lisa.
   houseDetailBox(HOUSE.w+.12,.18,.10,HOUSE.cx,.09,hz0-.18,trimMat,'rodapeFrontal');
@@ -572,6 +583,314 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   // Detalhes verticais nos cantos deixam a fachada menos chapada.
   for(const x of[hx0-.17,hx1+.17]){
     houseDetailBox(.13,HOUSE.h,.13,x,HOUSE.h/2,hz0-.17,trimMat,'cunhalFrontal');
+  }
+
+  // ---------------------------------------------------------------------------
+  // INTERIOR FUNCIONAL: SALA/COZINHA + QUARTO + BANHEIRO + CORREDOR
+  // ---------------------------------------------------------------------------
+  const interiorDoors=[];
+
+  function interiorWall(cx,cz,w,d,label){
+    const mesh=new THREE.Mesh(
+      new THREE.BoxGeometry(w,HOUSE.h-.10,d),
+      houseMat
+    );
+    mesh.position.set(cx,(HOUSE.h-.10)/2,cz);
+    mesh.name=label;
+    houseGroup.add(mesh);
+
+    const collider=addBoxCollider({
+      cx,cz,w,d,h:HOUSE.h-.10,
+      label,owner:'casa-interna'
+    });
+    mesh.userData.colliderId=collider.id;
+    return mesh;
+  }
+
+  function furnitureBox({
+    w,h,d,x,z,material=woodMat,name='movel',collider=true,y=null
+  }){
+    const mesh=new THREE.Mesh(
+      new THREE.BoxGeometry(w,h,d),
+      material
+    );
+    mesh.position.set(x,y??h/2,z);
+    mesh.name=name;
+    houseGroup.add(mesh);
+
+    if(collider){
+      const col=addBoxCollider({
+        cx:x,cz:z,w,d,h,
+        label:name,owner:'casa-movel'
+      });
+      mesh.userData.colliderId=col.id;
+    }
+    return mesh;
+  }
+
+  function addInteriorDoor({
+    x,z,width=1.05,height=2.12,name,openAngle=-Math.PI/2,trigger=1.65
+  }){
+    const pivot=new THREE.Group();
+    pivot.name=`${name}Pivot`;
+    pivot.position.set(x-width/2,0,z);
+    houseGroup.add(pivot);
+
+    const leaf=new THREE.Mesh(
+      new THREE.BoxGeometry(width-.06,height,.075),
+      woodMat
+    );
+    leaf.position.set((width-.06)/2,height/2,0);
+    leaf.name=`${name}Folha`;
+    pivot.add(leaf);
+
+    for(const y of[.42,1.05,1.68]){
+      const rail=new THREE.Mesh(
+        new THREE.BoxGeometry(width-.18,.065,.028),
+        trimMat
+      );
+      rail.position.set((width-.06)/2,y,-.05);
+      pivot.add(rail);
+    }
+
+    houseDetailBox(.09,height+.10,.12,x-width/2-.045,(height+.10)/2,z,woodMat,`${name}BatenteE`);
+    houseDetailBox(.09,height+.10,.12,x+width/2+.045,(height+.10)/2,z,woodMat,`${name}BatenteD`);
+    houseDetailBox(width+.18,.09,.12,x,height+.045,z,woodMat,`${name}BatenteTopo`);
+
+    let collider=addBoxCollider({
+      cx:x,cz:z,w:width,d:.16,h:height,
+      label:`${name}-fechada`,owner:'casa-interna'
+    });
+
+    const state={angle:0,target:0};
+
+    const door={
+      update(dt,targetPosition){
+        if(!targetPosition)return;
+        const distance=Math.hypot(targetPosition.x-x,targetPosition.z-z);
+
+        if(distance<trigger)state.target=openAngle;
+        else if(distance>trigger+1.0)state.target=0;
+
+        if(state.target!==0&&collider){
+          removeCollider(collider);
+          collider=null;
+        }
+
+        state.angle=THREE.MathUtils.lerp(
+          state.angle,
+          state.target,
+          1-Math.exp(-7*dt)
+        );
+
+        if(Math.abs(state.angle-state.target)<.002)state.angle=state.target;
+        pivot.rotation.y=state.angle;
+
+        if(state.target===0&&Math.abs(state.angle)<.025&&!collider){
+          collider=addBoxCollider({
+            cx:x,cz:z,w:width,d:.16,h:height,
+            label:`${name}-fechada`,owner:'casa-interna'
+          });
+        }
+      }
+    };
+    interiorDoors.push(door);
+    return door;
+  }
+
+  // Piso interno de madeira; banheiro recebe sobreposição cerâmica.
+  const interiorFloor=new THREE.Mesh(
+    new THREE.PlaneGeometry(HOUSE.w-.55,HOUSE.d-.55),
+    interiorFloorMat
+  );
+  interiorFloor.rotation.x=-Math.PI/2;
+  interiorFloor.position.set(HOUSE.cx,.026,HOUSE.cz);
+  interiorFloor.name='pisoInternoMadeira';
+  houseGroup.add(interiorFloor);
+
+  const bathFloor=new THREE.Mesh(
+    new THREE.PlaneGeometry(3.0,3.15),
+    bathroomFloorMat
+  );
+  bathFloor.rotation.x=-Math.PI/2;
+  bathFloor.position.set(-30.15,.032,39.0);
+  bathFloor.name='pisoBanheiro';
+  houseGroup.add(bathFloor);
+
+  // QUARTO: canto traseiro esquerdo, porta frontal e circulação livre.
+  const bedroomFrontZ=36.55;
+  const bedroomRightX=-35.65;
+  const bedroomDoorX=-38.15;
+  const bedroomDoorW=1.08;
+
+  const bedFrontLeft=(bedroomDoorX-bedroomDoorW/2)-(hx0+.18);
+  if(bedFrontLeft>.1){
+    interiorWall(
+      (hx0+.18+bedroomDoorX-bedroomDoorW/2)/2,
+      bedroomFrontZ,
+      bedFrontLeft,
+      .18,
+      'paredeQuartoFrenteE'
+    );
+  }
+
+  const bedFrontRight=(bedroomRightX-.02)-(bedroomDoorX+bedroomDoorW/2);
+  if(bedFrontRight>.1){
+    interiorWall(
+      (bedroomDoorX+bedroomDoorW/2+bedroomRightX-.02)/2,
+      bedroomFrontZ,
+      bedFrontRight,
+      .18,
+      'paredeQuartoFrenteD'
+    );
+  }
+
+  interiorWall(
+    bedroomRightX,
+    (bedroomFrontZ+hz1-.18)/2,
+    .18,
+    (hz1-.18)-bedroomFrontZ,
+    'paredeQuartoDireita'
+  );
+
+  addInteriorDoor({
+    x:bedroomDoorX,z:bedroomFrontZ,
+    width:bedroomDoorW,
+    name:'portaQuarto',
+    openAngle:-Math.PI/2,
+    trigger:1.7
+  });
+
+  // BANHEIRO: canto traseiro direito, acessível pelo corredor central.
+  const bathFrontZ=37.15;
+  const bathLeftX=-32.15;
+  const bathDoorX=-30.15;
+  const bathDoorW=.96;
+
+  interiorWall(
+    bathLeftX,
+    (bathFrontZ+hz1-.18)/2,
+    .18,
+    (hz1-.18)-bathFrontZ,
+    'paredeBanheiroEsquerda'
+  );
+
+  const bathFrontLeft=(bathDoorX-bathDoorW/2)-(bathLeftX+.09);
+  if(bathFrontLeft>.1){
+    interiorWall(
+      (bathLeftX+.09+bathDoorX-bathDoorW/2)/2,
+      bathFrontZ,
+      bathFrontLeft,
+      .18,
+      'paredeBanheiroFrenteE'
+    );
+  }
+
+  const bathFrontRight=(hx1-.18)-(bathDoorX+bathDoorW/2);
+  if(bathFrontRight>.1){
+    interiorWall(
+      (bathDoorX+bathDoorW/2+hx1-.18)/2,
+      bathFrontZ,
+      bathFrontRight,
+      .18,
+      'paredeBanheiroFrenteD'
+    );
+  }
+
+  addInteriorDoor({
+    x:bathDoorX,z:bathFrontZ,
+    width:bathDoorW,
+    name:'portaBanheiro',
+    openAngle:-Math.PI/2,
+    trigger:1.55
+  });
+
+  // Rodapés internos principais.
+  houseDetailBox(
+    bedroomRightX+.10,.10,(hz1-bedroomFrontZ)-.25,
+    bedroomRightX+.10,.05,(bedroomFrontZ+hz1)/2,
+    trimMat,'rodapeCorredorQuarto'
+  );
+  houseDetailBox(
+    bathLeftX-.10,.10,(hz1-bathFrontZ)-.25,
+    bathLeftX-.10,.05,(bathFrontZ+hz1)/2,
+    trimMat,'rodapeCorredorBanheiro'
+  );
+
+  // SALA: sofá, mesa de centro e painel baixo. Colisão só no sofá/painel.
+  furnitureBox({
+    w:3.0,h:.48,d:1.0,x:-39.1,z:33.65,
+    material:fabricMat,name:'sofaSala',collider:true
+  });
+  furnitureBox({
+    w:3.0,h:.78,d:.16,x:-39.1,z:34.07,
+    material:fabricMat,name:'encostoSofa',collider:false,y:.69
+  });
+  furnitureBox({
+    w:1.35,h:.38,d:.72,x:-36.4,z:33.75,
+    material:woodMat,name:'mesaCentro',collider:false
+  });
+  furnitureBox({
+    w:2.0,h:.56,d:.42,x:-35.0,z:35.45,
+    material:woodMat,name:'rackSala',collider:true
+  });
+
+  // COZINHA: bancada lateral, pia e mesa compacta.
+  furnitureBox({
+    w:.70,h:.90,d:3.10,x:-29.15,z:34.15,
+    material:counterMat,name:'bancadaCozinha',collider:true
+  });
+  const sink=new THREE.Mesh(
+    new THREE.BoxGeometry(.48,.06,.70),
+    metalMat
+  );
+  sink.position.set(-29.15,.94,33.70);
+  sink.name='piaCozinha';
+  houseGroup.add(sink);
+
+  furnitureBox({
+    w:1.55,h:.72,d:1.0,x:-32.05,z:35.05,
+    material:woodMat,name:'mesaCozinha',collider:true
+  });
+
+  // QUARTO: cama e guarda-roupa com colisores grandes.
+  furnitureBox({
+    w:2.05,h:.36,d:2.85,x:-39.15,z:39.05,
+    material:woodMat,name:'baseCama',collider:true
+  });
+  furnitureBox({
+    w:1.95,h:.24,d:2.72,x:-39.15,z:39.05,
+    material:mattressMat,name:'colchaoCama',collider:false,y:.48
+  });
+  furnitureBox({
+    w:.72,h:2.05,d:1.72,x:-36.35,z:39.15,
+    material:woodMat,name:'guardaRoupa',collider:true
+  });
+
+  // BANHEIRO: bancada/pia e vaso simples; só a bancada recebe colisor.
+  furnitureBox({
+    w:.72,h:.84,d:1.25,x:-29.15,z:39.25,
+    material:counterMat,name:'bancadaBanheiro',collider:true
+  });
+  const basin=new THREE.Mesh(
+    new THREE.CylinderGeometry(.28,.32,.12,16),
+    metalMat
+  );
+  basin.position.set(-29.15,.92,39.25);
+  basin.name='cubaBanheiro';
+  houseGroup.add(basin);
+
+  const toiletBase=new THREE.Mesh(
+    new THREE.CylinderGeometry(.30,.34,.38,14),
+    trimMat
+  );
+  toiletBase.position.set(-31.05,.19,39.45);
+  toiletBase.name='vasoSanitario';
+  houseGroup.add(toiletBase);
+
+  // O corredor central entre quarto e banheiro fica deliberadamente sem móveis.
+  function updateInteriorDoors(dt,targetPosition){
+    for(const door of interiorDoors)door.update(dt,targetPosition);
   }
 
   // PORTEIRA ORIGINAL PRESERVADA.
@@ -933,6 +1252,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   function updateWorld(dt,targetPosition){
     updateGate(dt,targetPosition);
     updateDoor(dt,targetPosition);
+    updateInteriorDoors(dt,targetPosition);
   }
 
   // Evita que uma parede fique entre a câmera e o alvo.

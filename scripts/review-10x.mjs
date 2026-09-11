@@ -1,0 +1,18 @@
+import fs from'node:fs';
+const main=fs.readFileSync('src/main.js','utf8');
+const html=fs.readFileSync('index.html','utf8');
+const manifest=fs.readFileSync('manifest.webmanifest','utf8');
+const files=fs.readdirSync('src');
+const checks=[];
+const ok=(name,cond)=>{if(!cond)throw new Error('REVISÃO: '+name);checks.push(name)};
+ok('1 núcleo mínimo: apenas main.js em src',files.length===1&&files[0]==='main.js');
+ok('2 sem favela/polícia/helicóptero',!/favela|pol[ií]cia|helic[oó]ptero|viatura/i.test(main));
+ok('3 mapa realmente plano',main.includes('new THREE.PlaneGeometry(200,200,1,1)')&&!/obterElevacao|heightmap|MORROS/.test(main));
+ok('4 personagem presente',main.includes('personagem.glb')&&main.includes('fallbackPerson'));
+ok('5 moto presente',main.includes('moto.glb')&&main.includes("toggleVehicle('moto')"));
+ok('6 carro presente',main.includes('carro.glb')&&main.includes("toggleVehicle('car')"));
+ok('7 inicialização tolera falha de GLB',main.includes('finish(fallback())')&&main.includes('setTimeout'));
+ok('8 performance: sem sombra/pós-processamento',main.includes('renderer.shadowMap.enabled=false')&&!/EffectComposer|UnrealBloom|postprocessing/.test(main));
+ok('9 controles PC e mobile',main.includes("keys.KeyW")&&main.includes('bindJoystick()')&&html.includes('lookZone'));
+ok('10 PWA/base de publicação',html.includes('manifest.webmanifest')&&manifest.includes('"display":"fullscreen"')&&fs.existsSync('sw.js'));
+console.log(JSON.stringify({ok:true,total:checks.length,checks},null,2));

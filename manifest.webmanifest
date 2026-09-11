@@ -1,0 +1,14 @@
+{
+  "id":"./",
+  "name":"Quintal 3D — Base Limpa",
+  "short_name":"Quintal 3D",
+  "description":"Base 3D limpa com personagem, moto, carro e mapa plano.",
+  "start_url":"./",
+  "scope":"./",
+  "display":"fullscreen",
+  "orientation":"any",
+  "background_color":"#111811",
+  "theme_color":"#111811",
+  "lang":"pt-BR",
+  "icons":[{"src":"./icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}

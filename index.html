@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Quintal 3D — Base Limpa</title>
+<meta name="theme-color" content="#111811">
+<meta name="description" content="Base 3D limpa com personagem, moto, carro e mapa plano.">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icon.svg" type="image/svg+xml">
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#111811;font-family:system-ui,Arial,sans-serif;color:#fff;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+#start{position:fixed;inset:0;z-index:30;display:grid;place-items:center;background:linear-gradient(#101810f2,#1a271af2);text-align:center;padding:24px}
+#start.hide{display:none}.card{max-width:520px}.card h1{font-size:clamp(34px,8vw,70px);margin:0 0 12px}.card p{color:#cbd8c7;line-height:1.5}
+button{border:0;border-radius:12px;min-height:48px;padding:0 18px;font-weight:900;letter-spacing:.04em;background:#e8c96f;color:#172016;touch-action:manipulation}
+#hud{position:fixed;z-index:10;top:max(12px,env(safe-area-inset-top));left:12px;padding:10px 12px;border-radius:10px;background:#091009cc;border:1px solid #496049;font-size:12px;line-height:1.55;pointer-events:none}
+#help{position:fixed;z-index:8;left:50%;bottom:12px;transform:translateX(-50%);max-width:92vw;padding:8px 12px;border-radius:18px;background:#091009b8;color:#dbe9d7;font-size:11px;text-align:center;pointer-events:none}
+#touch{display:none}.mobile #touch{display:block}
+#joyBase{position:fixed;z-index:12;left:20px;bottom:24px;width:142px;height:142px;border:2px solid #d9c36d99;border-radius:50%;background:#15201599}
+#joyKnob{position:absolute;left:50%;top:50%;width:58px;height:58px;margin:-29px;border-radius:50%;background:#d9c36dcc;border:2px solid #f3dc7a}
+#lookZone{position:fixed;z-index:7;right:0;top:0;width:52vw;height:100vh}
+.action{position:fixed;z-index:14;right:20px;width:76px;height:52px;padding:0 8px}
+#motoBtn{bottom:154px}#carBtn{bottom:94px}#jumpBtn{bottom:34px}
+body.driving #jumpBtn{display:none}
+@media(max-height:520px){#joyBase{width:118px;height:118px}#motoBtn{bottom:132px}#carBtn{bottom:76px}#jumpBtn{bottom:20px}.action{height:46px}}
+</style>
+</head>
+<body>
+<div id="start"><div class="card"><h1>QUINTAL 3D</h1><p>Base limpa reconstruída do zero. Só personagem, moto, carro e chão plano.</p><button id="playBtn">JOGAR</button><p style="font-size:12px">PC: WASD · mouse · Espaço · M moto · V carro · E veículo mais próximo · R reset</p></div></div>
+<div id="hud">FPS <b id="fps">0</b><br>Modo <b id="mode">A PÉ</b><br>Velocidade <b id="speed">0</b> km/h<br><span id="modelStatus">carregando modelos…</span></div>
+<div id="help">WASD andar/dirigir · M moto · V carro · E entrar/sair · R reset</div>
+<div id="touch">
+  <div id="lookZone"></div>
+  <div id="joyBase"><div id="joyKnob"></div></div>
+  <button class="action" id="motoBtn">MOTO</button>
+  <button class="action" id="carBtn">CARRO</button>
+  <button class="action" id="jumpBtn">PULAR</button>
+</div>
+<script type="module" src="./src/main.js?v=1"></script>
+<script>
+if('serviceWorker' in navigator&&location.protocol.startsWith('http')){
+  addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+}
+</script>
+</body>
+</html>

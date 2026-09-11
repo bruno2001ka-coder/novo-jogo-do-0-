@@ -3,9 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>Quintal 3D — Mundo Aberto</title>
 <meta name="theme-color" content="#111811">
 <meta name="description" content="Mundo aberto 3D com casa, estradas, fazendas, cidade futura, carro e moto.">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Quintal 3D">
+<title>Quintal 3D — Mundo Aberto</title>
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icon.svg" type="image/svg+xml">
 <script type="importmap">
@@ -40,10 +44,10 @@ body.driving #jumpBtn{display:none}
   <button class="action" id="carBtn">CARRO</button>
   <button class="action" id="jumpBtn">PULAR</button>
 </div>
-<script type="module" src="./src/main.js?v=28"></script>
+<script type="module" src="./src/main.js?v=29"></script>
 <script>
 if('serviceWorker' in navigator&&location.protocol.startsWith('http')){
-  addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+  addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=29').catch(()=>{}));
 }
 </script>
 </body>

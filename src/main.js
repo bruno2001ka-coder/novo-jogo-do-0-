@@ -29,7 +29,23 @@ scene.add(new THREE.HemisphereLight(0xddeeff,0x506044,2));
 const sun=new THREE.DirectionalLight(0xffffff,2);
 sun.position.set(35,55,20);scene.add(sun);
 
-const track=criarCampoDeProvas(scene,{debug});
+let track;
+try{
+  track=criarCampoDeProvas(scene,{debug});
+}catch(error){
+  console.error('Falha ao montar detalhes do mapa:',error);
+  const empty=()=>0;
+  const emptyMove=(position,dx,dz)=>{position.x+=dx;position.z+=dz;return{x:dx,z:dz,blocked:false}};
+  track={
+    colliders:[],groundHeight:empty,moveXZ:emptyMove,moveVehicle:emptyMove,
+    zoneAt:()=> 'MUNDO',terrainPose:()=>({y:0,pitch:0,roll:0}),
+    twoWheelPose:()=>({y:0,pitch:0,roll:0}),cameraSafePosition:(_a,b)=>b.clone(),
+    vehicleBlocked:()=>false,vehicleTurnAllowed:()=>true,limit:500,worldSize:1000,
+    flatAreas:[],roadNetwork:[],roadLayoutAudit:{ok:false},terrainInfoAt:()=>({height:0,zone:'MUNDO'}),
+    canPlaceRect:()=>({ok:false,reason:'mapa-em-carregamento'}),addBoxCollider:()=>null,
+    removeCollider:()=>false,updateWorld:()=>{}
+  };
+}
 
 const RAW='https://raw.githubusercontent.com/bruno2001ka-coder/cloude-jogo-/main/assets/';
 const URLS={

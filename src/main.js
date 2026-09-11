@@ -135,7 +135,8 @@ const vehicles={
     steerLow:.56,steerHigh:.16,steerFadeStart:4.5,steerFadeEnd:20,
     steerResponse:4.8,steerState:0,wheelBase:2.55,
     yawRate:0,maxYawRate:.95,yawResponse:8.5,angularDamping:16,
-    maxPitch:.22,maxRoll:.045,
+    maxPitch:.22,maxRoll:.08,
+    bodyPitch:0,bodyRoll:0,longitudinalAccel:0,prevSpeed:0,
     lean:0,label:'CARRO',wheels:null,radius:.92,
     halfLength:1.85,halfWidth:.78,maxStep:.18
   }
@@ -328,6 +329,10 @@ function resetWheels(v){
   for(const r of v.wheels){
     r.angulo=0;r.malha.rotation[r.eixoGiro]=0;
     if(r.dianteira)r.pivo.rotation.y=0;
+    if(Number.isFinite(r.neutralY)){
+      r.pivo.position.y=r.neutralY;
+      r.suspensionY=r.neutralY;
+    }
   }
 }
 
@@ -338,7 +343,8 @@ function reset(){
   }else{
     const v=vehicles[mode],s=SPAWN[mode];
     v.obj.position.set(s.x,track.groundHeight(s.x,s.z),s.z);
-    v.obj.rotation.set(0,0,0);v.speed=0;v.steerState=0;v.yawRate=0;resetWheels(v);
+    v.obj.rotation.set(0,0,0);v.speed=0;v.steerState=0;v.yawRate=0;
+    v.prevSpeed=0;v.longitudinalAccel=0;v.bodyPitch=0;v.bodyRoll=0;resetWheels(v);
   }
   snapRenderStates();
 }
@@ -458,12 +464,50 @@ function walk(dt){
   return{moving:horizontalSpeed>.08,running,speed:horizontalSpeed};
 }
 
+const wheelNeutralWorld=new THREE.Vector3();
+const wheelTargetWorld=new THREE.Vector3();
+const wheelTargetLocal=new THREE.Vector3();
+
 function animateWheels(v,distance,steerVisual){
   if(!v.wheels)return;
+
+  const isCar=v===vehicles.car;
+  if(isCar)v.obj.updateMatrixWorld(true);
+
   for(const r of v.wheels){
     r.angulo=(r.angulo||0)+distance/Math.max(.05,r.raio||.3);
     r.malha.rotation[r.eixoGiro]=r.angulo;
     if(r.dianteira)r.pivo.rotation.y=steerVisual;
+
+    // Curso visual só no carro. Mantém o pivô original como ponto neutro e move no máximo ±8 cm.
+    if(isCar&&r.pivo.parent){
+      if(!Number.isFinite(r.neutralY)){
+        r.neutralY=r.pivo.position.y;
+        r.suspensionY=r.neutralY;
+      }
+
+      wheelNeutralWorld
+        .set(r.pivo.position.x,r.neutralY,r.pivo.position.z);
+      r.pivo.parent.localToWorld(wheelNeutralWorld);
+
+      const wx=wheelNeutralWorld.x,wz=wheelNeutralWorld.z;
+      const groundY=track.groundHeight(wx,wz);
+      const wheelBottomY=wheelNeutralWorld.y-Math.max(.05,r.raio||.3);
+      const travelWorld=THREE.MathUtils.clamp(groundY-wheelBottomY,-.08,.08);
+
+      wheelTargetWorld.copy(wheelNeutralWorld);
+      wheelTargetWorld.y+=travelWorld;
+      wheelTargetLocal.copy(wheelTargetWorld);
+      r.pivo.parent.worldToLocal(wheelTargetLocal);
+
+      const targetLocalY=wheelTargetLocal.y;
+      r.suspensionY=THREE.MathUtils.lerp(
+        r.suspensionY,
+        targetLocalY,
+        expAlpha(16,FIXED_DT)
+      );
+      r.pivo.position.y=r.suspensionY;
+    }
   }
 }
 
@@ -484,13 +528,39 @@ function applyVehicleGroundPose(v,steerAngleValue,dt,name){
   const a=expAlpha(14,dt);
 
   const speedRatio=THREE.MathUtils.clamp(Math.abs(v.speed)/Math.max(1,v.max),0,1);
-  const turnLean=name==='moto'
-    ?THREE.MathUtils.clamp(-steerAngleValue*speedRatio*1.15,-.46,.46)
-    :0;
+  const turnLean=name==='moto'?THREE.MathUtils.clamp(-steerAngleValue*speedRatio*1.15,-.46,.46):0;
+
+  let secondaryPitch=0,secondaryRoll=0;
+  if(name==='car'){
+    // Dive/squat: desaceleração mergulha a frente (~3°), aceleração afunda a traseira (~2°).
+    const brakeLoad=THREE.MathUtils.clamp(-v.longitudinalAccel/12,0,1);
+    const accelLoad=THREE.MathUtils.clamp(v.longitudinalAccel/10,0,1);
+    const pitchTarget=
+      accelLoad*THREE.MathUtils.degToRad(2)-
+      brakeLoad*THREE.MathUtils.degToRad(3);
+
+    v.bodyPitch=THREE.MathUtils.lerp(
+      v.bodyPitch,
+      pitchTarget,
+      expAlpha(7.5,dt)
+    );
+
+    // Transferência lateral: inclina levemente para o lado externo da curva.
+    const lateralLoad=v.speed*steerAngleValue;
+    const rollTarget=THREE.MathUtils.clamp(-lateralLoad*.006,-.065,.065);
+    v.bodyRoll=THREE.MathUtils.lerp(
+      v.bodyRoll,
+      rollTarget,
+      expAlpha(8.5,dt)
+    );
+
+    secondaryPitch=v.bodyPitch;
+    secondaryRoll=v.bodyRoll;
+  }
 
   const stable=stabilizeAttitude(
-    pose.pitch,
-    name==='moto'?pose.roll+turnLean:pose.roll,
+    pose.pitch+secondaryPitch,
+    name==='moto'?pose.roll+turnLean:pose.roll+secondaryRoll,
     v
   );
 
@@ -523,7 +593,10 @@ function drive(dt,v,name){
   const steerTarget=THREE.MathUtils.clamp(((keys.KeyA?1:0)-(keys.KeyD?1:0))-joy.x,-1,1);
 
   const poseBefore=getVehiclePose(v,name);
+  const speedBefore=v.speed;
   v.speed=integrateVehicleSpeed(v.speed,throttle,reverse,v,dt,poseBefore.pitch);
+  v.longitudinalAccel=(v.speed-speedBefore)/Math.max(dt,1e-4);
+  v.prevSpeed=v.speed;
 
   v.steerState=approach(v.steerState,steerTarget,v.steerResponse*dt);
   if(Math.abs(steerTarget)<.01)v.steerState=approach(v.steerState,0,v.steerResponse*1.25*dt);

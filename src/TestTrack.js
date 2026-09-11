@@ -516,55 +516,107 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
 
   const poleMaterial=mat(0x3b4142,.74);
   const armMaterial=mat(0x51585a,.72);
-  const lampMaterial=new THREE.MeshStandardMaterial({color:0xffedb0,emissive:0xffbd55,emissiveIntensity:1.5,roughness:.3});
+  const lampMaterial=new THREE.MeshStandardMaterial({
+    color:0xffedb0,emissive:0xffbd55,emissiveIntensity:1.5,roughness:.3
+  });
   const trunkMaterial=mat(0x5b3b26,.98);
   const crownMaterial=mat(0x2e6137,.96);
-  const crownLightMaterial=mat(0x477b42,.96);
   const poleGeometry=new THREE.CylinderGeometry(.065,.095,4.5,8);
   const armGeometry=new THREE.BoxGeometry(1.05,.07,.07);
   const lampGeometry=new THREE.SphereGeometry(.16,8,6);
   const trunkGeometry=new THREE.CylinderGeometry(.10,.16,1.35,8);
   const crownGeometry=new THREE.SphereGeometry(1,10,8);
-
+  const maxPoles=54,maxTrees=96;
+  const poles=new THREE.InstancedMesh(poleGeometry,poleMaterial,maxPoles);
+  const arms=new THREE.InstancedMesh(armGeometry,armMaterial,maxPoles);
+  const lamps=new THREE.InstancedMesh(lampGeometry,lampMaterial,maxPoles);
+  const trunks=new THREE.InstancedMesh(trunkGeometry,trunkMaterial,maxTrees);
+  const lowerCrowns=new THREE.InstancedMesh(crownGeometry,crownMaterial,maxTrees);
+  const upperCrowns=new THREE.InstancedMesh(crownGeometry,crownMaterial,maxTrees);
+  const detailDummy=new THREE.Object3D();
   let poleCount=0;
   let treeCount=0;
-  for(const road of roadNetwork){
-    const curve=curveFromXZ(road.points,road.closed);
+
+  // Primeiro detalha o bairro inicial; assim a melhoria aparece ao entrar no jogo.
+  const detailRoads=[...roadNetwork].sort((a,b)=>{
+    const urban=id=>id==='avenida-inicial'||id.startsWith('rua-');
+    return Number(urban(b.id))-Number(urban(a.id));
+  });
+
+  for(const road of detailRoads){
     const points=road.points;
     if(road.type==='asfalto'){
-      for(let i=1;i<points.length-1&&poleCount<54;i+=2){
+      for(let i=1;i<points.length-1&&poleCount<maxPoles;i+=2){
         const current=points[i],previous=points[i-1],next=points[i+1]||current;
-        const tangent=new THREE.Vector3(next[0]-previous[0],0,next[1]-previous[1]).normalize();
+        const tangent=new THREE.Vector3(
+          next[0]-previous[0],0,next[1]-previous[1]
+        ).normalize();
         const side=i%2?-1:1,nx=tangent.z*side,nz=-tangent.x*side;
-        const pole=new THREE.Mesh(poleGeometry,poleMaterial);
-        pole.position.set(current[0]+nx*6.4,2.25,current[1]+nz*6.4);
-        detailGroup.add(pole);
-        const arm=new THREE.Mesh(armGeometry,armMaterial);
-        arm.position.set(current[0]+nx*5.9,4.35,current[1]+nz*5.9);
-        arm.rotation.y=Math.atan2(tangent.x,tangent.z);
-        detailGroup.add(arm);
-        const lamp=new THREE.Mesh(lampGeometry,lampMaterial);
-        lamp.position.set(current[0]+nx*5.25,4.22,current[1]+nz*5.25);
-        lamp.scale.set(1.35,.55,1.35);
-        detailGroup.add(lamp);
+        const px=current[0]+nx*6.4,pz=current[1]+nz*6.4;
+
+        detailDummy.position.set(px,2.25,pz);
+        detailDummy.rotation.set(0,0,0);
+        detailDummy.scale.set(1,1,1);
+        detailDummy.updateMatrix();
+        poles.setMatrixAt(poleCount,detailDummy.matrix);
+
+        detailDummy.position.set(
+          current[0]+nx*5.9,4.35,current[1]+nz*5.9
+        );
+        detailDummy.rotation.set(0,Math.atan2(tangent.x,tangent.z),0);
+        detailDummy.scale.set(1,1,1);
+        detailDummy.updateMatrix();
+        arms.setMatrixAt(poleCount,detailDummy.matrix);
+
+        detailDummy.position.set(
+          current[0]+nx*5.25,4.22,current[1]+nz*5.25
+        );
+        detailDummy.rotation.set(0,0,0);
+        detailDummy.scale.set(1.35,.55,1.35);
+        detailDummy.updateMatrix();
+        lamps.setMatrixAt(poleCount,detailDummy.matrix);
         poleCount++;
       }
     }
-    for(let i=0;i<points.length&&treeCount<96;i+=2){
-      const current=points[i],previous=points[Math.max(0,i-1)],next=points[Math.min(points.length-1,i+1)];
-      const tangent=new THREE.Vector3(next[0]-previous[0],0,next[1]-previous[1]).normalize();
+
+    for(let i=0;i<points.length&&treeCount<maxTrees;i+=2){
+      const current=points[i],previous=points[Math.max(0,i-1)];
+      const next=points[Math.min(points.length-1,i+1)];
+      const tangent=new THREE.Vector3(
+        next[0]-previous[0],0,next[1]-previous[1]
+      ).normalize();
       const side=i%2?-1:1,nx=tangent.z*side,nz=-tangent.x*side;
       const offset=road.type==='asfalto'?10.5:8.2;
       const size=.78+(treeCount%4)*.11;
       const x=current[0]+nx*offset,z=current[1]+nz*offset;
-      const trunk=new THREE.Mesh(trunkGeometry,trunkMaterial);
-      trunk.position.set(x,.68,z);trunk.scale.setScalar(size);detailGroup.add(trunk);
-      const lower=new THREE.Mesh(crownGeometry,treeCount%3===0?crownLightMaterial:crownMaterial);
-      lower.position.set(x,1.65,z);lower.scale.set(.95*size,1.12*size,.95*size);detailGroup.add(lower);
-      const upper=new THREE.Mesh(crownGeometry,crownMaterial);
-      upper.position.set(x,2.35,z);upper.scale.set(.68*size,.82*size,.68*size);detailGroup.add(upper);
+
+      detailDummy.position.set(x,.68*size,z);
+      detailDummy.rotation.set(0,(treeCount%7)*.43,0);
+      detailDummy.scale.set(size,size,size);
+      detailDummy.updateMatrix();
+      trunks.setMatrixAt(treeCount,detailDummy.matrix);
+
+      detailDummy.position.set(x,1.68*size,z);
+      detailDummy.rotation.set(0,(treeCount%5)*.57,0);
+      detailDummy.scale.set(.95*size,1.12*size,.95*size);
+      detailDummy.updateMatrix();
+      lowerCrowns.setMatrixAt(treeCount,detailDummy.matrix);
+
+      detailDummy.position.set(x,2.42*size,z);
+      detailDummy.rotation.set(0,(treeCount%6)*.48,0);
+      detailDummy.scale.set(.68*size,.82*size,.68*size);
+      detailDummy.updateMatrix();
+      upperCrowns.setMatrixAt(treeCount,detailDummy.matrix);
       treeCount++;
     }
+  }
+
+  poles.count=arms.count=lamps.count=poleCount;
+  trunks.count=lowerCrowns.count=upperCrowns.count=treeCount;
+  for(const mesh of[poles,arms,lamps,trunks,lowerCrowns,upperCrowns]){
+    mesh.instanceMatrix.needsUpdate=true;
+    mesh.frustumCulled=false;
+    detailGroup.add(mesh);
   }
 
   // Entroncamento amplo da futura cidade.

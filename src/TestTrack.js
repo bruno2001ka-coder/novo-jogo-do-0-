@@ -175,27 +175,35 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     return false;
   }
 
-  function vehicleHeight(x,z,yaw,halfLength,halfWidth,twoWheel=false){
+  function vehicleContacts(x,z,yaw,halfLength,halfWidth,twoWheel=false){
     const fx=-Math.sin(yaw),fz=-Math.cos(yaw);
     if(twoWheel){
-      const hF=groundHeight(x+fx*halfLength,z+fz*halfLength);
-      const hB=groundHeight(x-fx*halfLength,z-fz*halfLength);
-      return(hF+hB)/2;
+      return[
+        groundHeight(x+fx*halfLength,z+fz*halfLength),
+        groundHeight(x-fx*halfLength,z-fz*halfLength)
+      ];
     }
     const rx=Math.cos(yaw),rz=-Math.sin(yaw);
-    return(
-      groundHeight(x+fx*halfLength+rx*halfWidth,z+fz*halfLength+rz*halfWidth)+
-      groundHeight(x+fx*halfLength-rx*halfWidth,z+fz*halfLength-rz*halfWidth)+
-      groundHeight(x-fx*halfLength+rx*halfWidth,z-fz*halfLength+rz*halfWidth)+
+    return[
+      groundHeight(x+fx*halfLength+rx*halfWidth,z+fz*halfLength+rz*halfWidth),
+      groundHeight(x+fx*halfLength-rx*halfWidth,z+fz*halfLength-rz*halfWidth),
+      groundHeight(x-fx*halfLength+rx*halfWidth,z-fz*halfLength+rz*halfWidth),
       groundHeight(x-fx*halfLength-rx*halfWidth,z-fz*halfLength-rz*halfWidth)
-    )/4;
+    ];
+  }
+
+  function vehicleHeight(x,z,yaw,halfLength,halfWidth,twoWheel=false){
+    const contacts=vehicleContacts(x,z,yaw,halfLength,halfWidth,twoWheel);
+    return contacts.reduce((a,b)=>a+b,0)/contacts.length;
   }
 
   function canVehicleStep(fromX,fromZ,toX,toZ,yaw,halfLength,halfWidth,maxStep,twoWheel){
-    return Math.abs(
-      vehicleHeight(toX,toZ,yaw,halfLength,halfWidth,twoWheel)-
-      vehicleHeight(fromX,fromZ,yaw,halfLength,halfWidth,twoWheel)
-    )<=maxStep+.001;
+    const before=vehicleContacts(fromX,fromZ,yaw,halfLength,halfWidth,twoWheel);
+    const after=vehicleContacts(toX,toZ,yaw,halfLength,halfWidth,twoWheel);
+    for(let i=0;i<before.length;i++){
+      if(Math.abs(after[i]-before[i])>maxStep+.001)return false;
+    }
+    return true;
   }
 
   function canStep(fromX,fromZ,toX,toZ,maxStep){

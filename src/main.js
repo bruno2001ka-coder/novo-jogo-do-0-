@@ -3,6 +3,7 @@ import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
 import{separarRodas}from'./Rodas.js';
 import{criarCampoDeProvas}from'./TestTrack.js';
 import{criarProfiler}from'./Profiler.js';
+import{FIXED_DT,MAX_PHYSICS_STEPS,approach,expAlpha,integrateVehicleSpeed,steeringAngle,bicycleYawDelta,planarApproach}from'./GamePhysics.js';
 
 const $=id=>document.getElementById(id);
 const mobile=matchMedia('(pointer:coarse)').matches||innerWidth<900;
@@ -114,12 +115,22 @@ const character={
 
 const vehicles={
   moto:{
-    obj:bike,speed:0,max:18,acc:15,brake:22,drag:4.2,steer:1.5,lean:.22,label:'MOTO',
-    wheels:null,radius:.44,halfLength:1.0,halfWidth:.27,maxStep:.30
+    obj:bike,speed:0,max:18,maxReverse:5.8,
+    accelForward:11.5,accelReverse:5.2,brakeDecel:17,
+    rollingDrag:1.05,aeroDrag:.014,slopeGravity:.82,
+    steerLow:.54,steerHigh:.15,steerFadeStart:3.5,steerFadeEnd:16,
+    steerResponse:5.8,steerState:0,wheelBase:1.42,
+    lean:.34,label:'MOTO',wheels:null,radius:.44,
+    halfLength:1.0,halfWidth:.27,maxStep:.22
   },
   car:{
-    obj:car,speed:0,max:23,acc:11,brake:25,drag:3.2,steer:.82,lean:.06,label:'CARRO',
-    wheels:null,radius:.92,halfLength:1.85,halfWidth:.78,maxStep:.24
+    obj:car,speed:0,max:23,maxReverse:7.2,
+    accelForward:8.8,accelReverse:5.4,brakeDecel:18,
+    rollingDrag:1.15,aeroDrag:.012,slopeGravity:.78,
+    steerLow:.56,steerHigh:.16,steerFadeStart:4.5,steerFadeEnd:20,
+    steerResponse:4.8,steerState:0,wheelBase:2.55,
+    lean:.055,label:'CARRO',wheels:null,radius:.92,
+    halfLength:1.85,halfWidth:.78,maxStep:.18
   }
 };
 
@@ -199,6 +210,8 @@ Promise.all([
 
 const keys=Object.create(null);
 let jumpRequest=false,velY=0,mode='foot',camYaw=0,camPitch=.25;
+const locomotion={vx:0,vz:0,grounded:true,coyote:.1,jumpBuffer:0};
+let characterMotion={moving:false,running:false,speed:0};
 const joy={x:0,y:0},look={active:false,id:null,x:0,y:0};
 
 addEventListener('keydown',e=>{
@@ -237,6 +250,7 @@ function exitVehicle(){
   player.position.y=track.groundHeight(player.position.x,player.position.z);
   player.rotation.x=0;player.rotation.z=0;
   player.visible=true;restoreCharacterTransform();
+  locomotion.vx=0;locomotion.vz=0;velY=0;locomotion.grounded=true;locomotion.coyote=.1;
   mode='foot';document.body.classList.remove('driving');
 }
 
@@ -270,10 +284,11 @@ function resetWheels(v){
 function reset(){
   if(mode==='foot'){
     player.position.set(SPAWN.player.x,track.groundHeight(SPAWN.player.x,SPAWN.player.z),SPAWN.player.z);player.rotation.set(0,0,0);velY=0;
+    locomotion.vx=0;locomotion.vz=0;locomotion.grounded=true;locomotion.coyote=.1;locomotion.jumpBuffer=0;
   }else{
     const v=vehicles[mode],s=SPAWN[mode];
     v.obj.position.set(s.x,track.groundHeight(s.x,s.z),s.z);
-    v.obj.rotation.set(0,0,0);v.speed=0;resetWheels(v);
+    v.obj.rotation.set(0,0,0);v.speed=0;v.steerState=0;resetWheels(v);
   }
 }
 
@@ -328,30 +343,68 @@ function updateCharacterAnimation(dt,{moving=false,running=false,speed=0,pilot=f
 function walk(dt){
   const ix=(keys.KeyD?1:0)-(keys.KeyA?1:0)+joy.x;
   const iz=(keys.KeyW?1:0)-(keys.KeyS?1:0)-joy.y;
-  const len=Math.hypot(ix,iz);
-  let moving=false,running=false,speed=0;
-  const floorBefore=track.groundHeight(player.position.x,player.position.z);
-  const grounded=player.position.y<=floorBefore+.03&&velY<=.05;
+  const inputLen=Math.hypot(ix,iz);
+  const hasInput=inputLen>.08;
+  const running=hasInput&&!!(keys.ShiftLeft||keys.ShiftRight||Math.hypot(joy.x,joy.y)>.86);
+  const maxSpeed=running?6.6:4.25;
 
-  if(len>.08){
-    moving=true;
-    const nx=ix/Math.max(1,len),nz=iz/Math.max(1,len);
-    running=!!(keys.ShiftLeft||keys.ShiftRight||Math.hypot(joy.x,joy.y)>.86);
-    speed=running?7.2:4.4;
-    const f=new THREE.Vector3(-Math.sin(camYaw),0,-Math.cos(camYaw));
-    const r=new THREE.Vector3(Math.cos(camYaw),0,-Math.sin(camYaw));
-    const move=f.multiplyScalar(nz).add(r.multiplyScalar(nx)).normalize();
-    const step=track.moveXZ(player.position,move.x*speed*dt,move.z*speed*dt,.33,.31);
-    if(Math.hypot(step.x,step.z)>.0001)player.rotation.y=Math.atan2(move.x,move.z);
+  let targetX=0,targetZ=0;
+  if(hasInput){
+    const nx=ix/Math.max(1,inputLen),nz=iz/Math.max(1,inputLen);
+    const fX=-Math.sin(camYaw),fZ=-Math.cos(camYaw);
+    const rX=Math.cos(camYaw),rZ=-Math.sin(camYaw);
+    let mx=fX*nz+rX*nx,mz=fZ*nz+rZ*nx;
+    const ml=Math.hypot(mx,mz)||1;mx/=ml;mz/=ml;
+    targetX=mx*maxSpeed;targetZ=mz*maxSpeed;
   }
 
-  if(jumpRequest&&grounded){velY=5.7}
-  jumpRequest=false;velY-=15.5*dt;player.position.y+=velY*dt;
+  const floorBefore=track.groundHeight(player.position.x,player.position.z);
+  const nearGround=player.position.y<=floorBefore+.08&&velY<=.6;
+  if(nearGround){
+    locomotion.grounded=true;
+    locomotion.coyote=.10;
+  }else{
+    locomotion.coyote=Math.max(0,locomotion.coyote-dt);
+  }
+
+  if(jumpRequest)locomotion.jumpBuffer=.12;
+  jumpRequest=false;
+  locomotion.jumpBuffer=Math.max(0,locomotion.jumpBuffer-dt);
+
+  const accel=hasInput?(locomotion.grounded?22:7):(locomotion.grounded?30:3.5);
+  const next=planarApproach(locomotion.vx,locomotion.vz,targetX,targetZ,accel,dt);
+  locomotion.vx=next.x;locomotion.vz=next.z;
+
+  const wantedX=locomotion.vx*dt,wantedZ=locomotion.vz*dt;
+  const step=track.moveXZ(player.position,wantedX,wantedZ,.33,.31);
+  if(Math.abs(step.x-wantedX)>.002)locomotion.vx=0;
+  if(Math.abs(step.z-wantedZ)>.002)locomotion.vz=0;
+
+  const horizontalSpeed=Math.hypot(step.x,step.z)/Math.max(dt,1e-5);
+  if(horizontalSpeed>.04)player.rotation.y=Math.atan2(step.x,step.z);
+
+  if(locomotion.jumpBuffer>0&&locomotion.coyote>0){
+    velY=5.55;
+    locomotion.grounded=false;
+    locomotion.coyote=0;
+    locomotion.jumpBuffer=0;
+  }
+
+  if(!locomotion.grounded||velY>0)velY-=18.5*dt;
+  player.position.y+=velY*dt;
 
   const floor=track.groundHeight(player.position.x,player.position.z);
-  if(player.position.y<floor){player.position.y=floor;velY=0}
+  const drop=player.position.y-floor;
+  if(player.position.y<=floor||(velY<=0&&drop<=.16)){
+    player.position.y=floor;
+    velY=0;
+    locomotion.grounded=true;
+    locomotion.coyote=.10;
+  }else{
+    locomotion.grounded=false;
+  }
 
-  return{moving,running,speed};
+  return{moving:horizontalSpeed>.08,running,speed:horizontalSpeed};
 }
 
 function animateWheels(v,distance,steerVisual){
@@ -363,54 +416,72 @@ function animateWheels(v,distance,steerVisual){
   }
 }
 
-function applyVehicleGroundPose(v,steer,dt,name){
-  const pose=name==='moto'
+function getVehiclePose(v,name){
+  return name==='moto'
     ?track.twoWheelPose(v.obj.position.x,v.obj.position.z,v.obj.rotation.y,v.halfLength)
     :track.terrainPose(v.obj.position.x,v.obj.position.z,v.obj.rotation.y,v.halfLength,v.halfWidth);
+}
+
+function applyVehicleGroundPose(v,steerAngleValue,dt,name){
+  const pose=getVehiclePose(v,name);
   v.obj.position.y=pose.y;
-  v.obj.rotation.x=THREE.MathUtils.lerp(v.obj.rotation.x,pose.pitch,1-Math.exp(-12*dt));
-  const turnScale=THREE.MathUtils.clamp(Math.abs(v.speed)/Math.max(1,v.max),0,1);
-  const lean=-steer*turnScale*v.lean;
-  v.obj.rotation.z=THREE.MathUtils.lerp(v.obj.rotation.z,pose.roll+lean,1-Math.exp(-10*dt));
+  const a=expAlpha(12,dt);
+  v.obj.rotation.x=THREE.MathUtils.lerp(v.obj.rotation.x,pose.pitch,a);
+
+  const speedRatio=THREE.MathUtils.clamp(Math.abs(v.speed)/Math.max(1,v.max),0,1);
+  const leanTarget=name==='moto'
+    ?THREE.MathUtils.clamp(-steerAngleValue*speedRatio*1.15,-.46,.46)
+    :THREE.MathUtils.clamp(-steerAngleValue*speedRatio*v.lean,-.055,.055);
+  v.obj.rotation.z=THREE.MathUtils.lerp(v.obj.rotation.z,pose.roll+leanTarget,expAlpha(10,dt));
+  return pose;
 }
 
 function drive(dt,v,name){
-  const throttle=(keys.KeyW?1:0)+(joy.y<-.25?Math.min(1,-joy.y):0);
-  const reverse=(keys.KeyS?1:0)+(joy.y>.25?Math.min(1,joy.y):0);
-  const steer=((keys.KeyA?1:0)-(keys.KeyD?1:0))-joy.x;
+  const keyThrottle=keys.KeyW?1:0,keyReverse=keys.KeyS?1:0;
+  const joyThrottle=joy.y<-.12?THREE.MathUtils.clamp((-joy.y-.12)/.88,0,1):0;
+  const joyReverse=joy.y>.12?THREE.MathUtils.clamp((joy.y-.12)/.88,0,1):0;
+  const throttle=Math.max(keyThrottle,joyThrottle);
+  const reverse=Math.max(keyReverse,joyReverse);
+  const steerTarget=THREE.MathUtils.clamp(((keys.KeyA?1:0)-(keys.KeyD?1:0))-joy.x,-1,1);
 
-  if(throttle>0)v.speed+=v.acc*throttle*dt;
-  else if(reverse>0)v.speed-=v.acc*.62*reverse*dt;
-  else v.speed-=Math.sign(v.speed)*Math.min(Math.abs(v.speed),v.drag*dt);
-  v.speed=THREE.MathUtils.clamp(v.speed,-v.max*.32,v.max);
+  const poseBefore=getVehiclePose(v,name);
+  v.speed=integrateVehicleSpeed(v.speed,throttle,reverse,v,dt,poseBefore.pitch);
 
-  const turnScale=THREE.MathUtils.clamp(Math.abs(v.speed)/3,.18,1);
-  if(Math.abs(v.speed)>.04&&steer){
-    const candidateYaw=v.obj.rotation.y+steer*v.steer*turnScale*dt*Math.sign(v.speed);
+  v.steerState=approach(v.steerState,steerTarget,v.steerResponse*dt);
+  if(Math.abs(steerTarget)<.01)v.steerState=approach(v.steerState,0,v.steerResponse*1.25*dt);
+
+  const wheelAngle=steeringAngle(v.steerState,v.speed,v);
+  const dyaw=bicycleYawDelta(v.speed,wheelAngle,v.wheelBase,dt);
+  if(Math.abs(dyaw)>1e-6){
+    const candidateYaw=v.obj.rotation.y+dyaw;
     if(!track.vehicleBlocked(v.obj.position.x,v.obj.position.z,candidateYaw,v.halfLength,v.halfWidth)){
       v.obj.rotation.y=candidateYaw;
+    }else{
+      v.speed*=.72;
     }
   }
 
   const requested=v.speed*dt;
-  const f=new THREE.Vector3(-Math.sin(v.obj.rotation.y),0,-Math.cos(v.obj.rotation.y));
+  const fX=-Math.sin(v.obj.rotation.y),fZ=-Math.cos(v.obj.rotation.y);
   const ox=v.obj.position.x,oz=v.obj.position.z;
-  track.moveVehicle(
-    v.obj.position,v.obj.rotation.y,f.x*requested,f.z*requested,
+  const moved=track.moveVehicle(
+    v.obj.position,v.obj.rotation.y,fX*requested,fZ*requested,
     v.halfLength,v.halfWidth,v.maxStep,name==='moto'
   );
-  const actual=(v.obj.position.x-ox)*f.x+(v.obj.position.z-oz)*f.z;
+  const actual=(v.obj.position.x-ox)*fX+(v.obj.position.z-oz)*fZ;
 
-  if(Math.abs(requested)>.001&&Math.abs(actual)<Math.abs(requested)*.35)v.speed*=.15;
+  if(moved.blocked&&Math.abs(requested)>.002){
+    const ratio=Math.abs(actual)/Math.abs(requested);
+    if(ratio<.72)v.speed*=Math.max(.04,ratio*.28);
+  }
 
-  animateWheels(v,actual,steer*.56);
-  applyVehicleGroundPose(v,steer,dt,name);
+  animateWheels(v,actual,wheelAngle);
+  applyVehicleGroundPose(v,wheelAngle,dt,name);
 
   if(name==='moto'){
     player.visible=true;
     player.position.copy(v.obj.position);
     player.rotation.copy(v.obj.rotation);
-    updateCharacterAnimation(dt,{pilot:true});
   }
 }
 
@@ -475,31 +546,44 @@ const profiler=criarProfiler(renderer,{
   }
 });
 
-let last=performance.now(),fpsFrames=0,fpsTime=0;
-function frame(now){
-  requestAnimationFrame(frame);
-  const dt=Math.min((now-last)/1000,.033);last=now;
-
-  if(!$('start').classList.contains('hide')){
-    renderer.render(scene,camera);profiler.frame(dt);return;
-  }
-
+let last=performance.now(),fpsFrames=0,fpsTime=0,accumulator=0;
+function simulate(dt){
   if(mode==='foot'){
-    const state=walk(dt);
-    updateCharacterAnimation(dt,state);
+    characterMotion=walk(dt);
   }else{
     drive(dt,vehicles[mode],mode);
   }
+}
 
-  updateCamera(dt);
+function frame(now){
+  requestAnimationFrame(frame);
+  const rawDt=Math.min((now-last)/1000,.10);last=now;
+
+  if(!$('start').classList.contains('hide')){
+    accumulator=0;
+    renderer.render(scene,camera);profiler.frame(rawDt);return;
+  }
+
+  accumulator=Math.min(accumulator+rawDt,FIXED_DT*MAX_PHYSICS_STEPS);
+  let steps=0;
+  while(accumulator>=FIXED_DT&&steps<MAX_PHYSICS_STEPS){
+    simulate(FIXED_DT);
+    accumulator-=FIXED_DT;
+    steps++;
+  }
+
+  if(mode==='foot')updateCharacterAnimation(rawDt,characterMotion);
+  else if(mode==='moto')updateCharacterAnimation(rawDt,{pilot:true});
+
+  updateCamera(rawDt);
   renderer.render(scene,camera);
-  profiler.frame(dt);
+  profiler.frame(rawDt);
 
-  fpsFrames++;fpsTime+=dt;
+  fpsFrames++;fpsTime+=rawDt;
   if(fpsTime>=.5){
     $('fps').textContent=Math.round(fpsFrames/fpsTime);
     $('mode').textContent=mode==='foot'?'A PÉ':vehicles[mode].label;
-    $('speed').textContent=mode==='foot'?'0':Math.round(Math.abs(vehicles[mode].speed)*3.6);
+    $('speed').textContent=mode==='foot'?Math.round(characterMotion.speed*3.6):Math.round(Math.abs(vehicles[mode].speed)*3.6);
     fpsFrames=0;fpsTime=0;
   }
 }

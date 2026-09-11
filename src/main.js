@@ -340,7 +340,7 @@ function walk(dt){
     const f=new THREE.Vector3(-Math.sin(camYaw),0,-Math.cos(camYaw));
     const r=new THREE.Vector3(Math.cos(camYaw),0,-Math.sin(camYaw));
     const move=f.multiplyScalar(nz).add(r.multiplyScalar(nx)).normalize();
-    const step=track.moveXZ(player,move.x*speed*dt,move.z*speed*dt,.33,.31);
+    const step=track.moveXZ(player.position,move.x*speed*dt,move.z*speed*dt,.33,.31);
     if(Math.hypot(step.x,step.z)>.0001)player.rotation.y=Math.atan2(move.x,move.z);
   }
 
@@ -389,7 +389,7 @@ function drive(dt,v,name){
   const requested=v.speed*dt;
   const f=new THREE.Vector3(-Math.sin(v.obj.rotation.y),0,-Math.cos(v.obj.rotation.y));
   const ox=v.obj.position.x,oz=v.obj.position.z;
-  const move=track.moveXZ(v.obj,f.x*requested,f.z*requested,v.radius,v.maxStep);
+  const move=track.moveXZ(v.obj.position,f.x*requested,f.z*requested,v.radius,v.maxStep);
   const actual=(v.obj.position.x-ox)*f.x+(v.obj.position.z-oz)*f.z;
 
   if(Math.abs(requested)>.001&&Math.abs(actual)<Math.abs(requested)*.35)v.speed*=.15;

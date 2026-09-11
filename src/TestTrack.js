@@ -41,6 +41,10 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   const metalMat=mat(0x9ba0a2,.72);
   const yardConcreteMat=mat(0xa6a49d,.93);
   const soilMat=mat(0x6b4b32,.98);
+  const gravelMat=mat(0x766b5c,.99);
+  const sidewalkMat=mat(0xb8b7b1,.94);
+  const curbRoadMat=mat(0x8e8d88,.96);
+  const roadLineMat=mat(0xd2c36c,.82);
   const glassMat=new THREE.MeshStandardMaterial({
     color:0x263238,roughness:.28,metalness:.05,
     transparent:true,opacity:.72
@@ -188,6 +192,218 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     cones.setMatrixAt(i,dummy.matrix);
   }
   cones.instanceMatrix.needsUpdate=true;group.add(cones);
+
+  // ---------------------------------------------------------------------------
+  // MALHA VIÁRIA PRINCIPAL
+  // Pista existente -> S principal -> futura cidade / casa / fazenda.
+  // As ruas são ribbons leves: sem novos colisores e sem alterar a física atual.
+  // ---------------------------------------------------------------------------
+  const roadGroup=new THREE.Group();
+  roadGroup.name='malhaViaria';
+  group.add(roadGroup);
+
+  function curveFromXZ(points){
+    return new THREE.CatmullRomCurve3(
+      points.map(([x,z])=>new THREE.Vector3(x,0,z)),
+      false,
+      'centripetal',
+      .45
+    );
+  }
+
+  function pathBand(points,offsetA,offsetB,material,name,y=.045,segments=44){
+    const curve=curveFromXZ(points);
+    const positions=[];
+    const indices=[];
+
+    for(let i=0;i<=segments;i++){
+      const t=i/segments;
+      const p=curve.getPoint(t);
+      const tangent=curve.getTangent(t).normalize();
+      const nx=tangent.z;
+      const nz=-tangent.x;
+
+      positions.push(
+        p.x+nx*offsetA,y,p.z+nz*offsetA,
+        p.x+nx*offsetB,y,p.z+nz*offsetB
+      );
+    }
+
+    for(let i=0;i<segments;i++){
+      const a=i*2,b=a+1,c0=a+2,d=a+3;
+      indices.push(a,c0,b,b,c0,d);
+    }
+
+    const geometry=new THREE.BufferGeometry();
+    geometry.setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute(positions,3)
+    );
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+
+    const mesh=new THREE.Mesh(geometry,material);
+    mesh.name=name;
+    roadGroup.add(mesh);
+    return mesh;
+  }
+
+  function buildRoad({
+    id,points,width=7.2,material=roadMat,
+    sidewalk=true,sidewalkWidth=1.15,
+    line=true
+  }){
+    pathBand(
+      points,
+      -width/2,
+      width/2,
+      material,
+      `via-${id}`,
+      .042
+    );
+
+    if(sidewalk){
+      const gap=.18;
+      pathBand(
+        points,
+        width/2+gap,
+        width/2+gap+sidewalkWidth,
+        sidewalkMat,
+        `calcada-${id}-direita`,
+        .060
+      );
+      pathBand(
+        points,
+        -width/2-gap-sidewalkWidth,
+        -width/2-gap,
+        sidewalkMat,
+        `calcada-${id}-esquerda`,
+        .060
+      );
+
+      // Meio-fio visual fino acompanhando as duas bordas da pista.
+      pathBand(
+        points,
+        width/2+.05,
+        width/2+.13,
+        curbRoadMat,
+        `meioFio-${id}-direita`,
+        .071
+      );
+      pathBand(
+        points,
+        -width/2-.13,
+        -width/2-.05,
+        curbRoadMat,
+        `meioFio-${id}-esquerda`,
+        .071
+      );
+    }
+
+    if(line){
+      pathBand(
+        points,
+        -.055,
+        .055,
+        roadLineMat,
+        `eixo-${id}`,
+        .067
+      );
+    }
+  }
+
+  // Dados persistentes de topologia para uso futuro por tráfego/IA.
+  const roadNetwork=Object.freeze([
+    Object.freeze({
+      id:'principal-s',
+      type:'asfalto',
+      width:8.0,
+      sidewalks:true,
+      connects:['pista-existente','cidade-futura'],
+      points:Object.freeze([
+        Object.freeze([0,18]),
+        Object.freeze([1.5,25]),
+        Object.freeze([6.5,31.5]),
+        Object.freeze([4.0,38.0]),
+        Object.freeze([-2.8,44.0]),
+        Object.freeze([-1.0,51.0]),
+        Object.freeze([5.7,58.0]),
+        Object.freeze([10.0,65.0]),
+        Object.freeze([12.0,74.0])
+      ])
+    }),
+    Object.freeze({
+      id:'acesso-casa',
+      type:'asfalto',
+      width:6.5,
+      sidewalks:true,
+      connects:['casa','principal-s'],
+      points:Object.freeze([
+        Object.freeze([-21.7,26.4]),
+        Object.freeze([-16.0,26.7]),
+        Object.freeze([-10.2,28.0]),
+        Object.freeze([-5.0,30.8]),
+        Object.freeze([1.8,34.5])
+      ])
+    }),
+    Object.freeze({
+      id:'acesso-fazenda',
+      type:'cascalho',
+      width:6.8,
+      sidewalks:true,
+      connects:['principal-s','fazenda'],
+      points:Object.freeze([
+        Object.freeze([-1.8,46.0]),
+        Object.freeze([5.0,46.7]),
+        Object.freeze([11.5,44.4]),
+        Object.freeze([17.8,40.5]),
+        Object.freeze([24.5,36.8]),
+        Object.freeze([30.0,35.0])
+      ])
+    })
+  ]);
+
+  const mainRoad=roadNetwork[0];
+  buildRoad({
+    id:mainRoad.id,
+    points:mainRoad.points,
+    width:mainRoad.width,
+    material:roadMat,
+    sidewalk:true,
+    sidewalkWidth:1.20,
+    line:true
+  });
+
+  const houseRoad=roadNetwork[1];
+  buildRoad({
+    id:houseRoad.id,
+    points:houseRoad.points,
+    width:houseRoad.width,
+    material:roadMat,
+    sidewalk:true,
+    sidewalkWidth:1.05,
+    line:true
+  });
+
+  const farmRoad=roadNetwork[2];
+  buildRoad({
+    id:farmRoad.id,
+    points:farmRoad.points,
+    width:farmRoad.width,
+    material:gravelMat,
+    sidewalk:true,
+    sidewalkWidth:.95,
+    line:false
+  });
+
+  // Cabeceira reservada para a futura cidade, sem construir bairro ainda.
+  const cityReserve=new THREE.Mesh(
+    new THREE.CylinderGeometry(8.2,8.2,.045,28),
+    roadMat
+  );
+  cityReserve.position.set(12,.025,76.0);
+  cityReserve.name='entroncamentoCidadeFutura';
+  roadGroup.add(cityReserve);
 
   // ---------------------------------------------------------------------------
   // PRIMEIRA ÁREA REAL DO MUNDO: CASA RESIDENCIAL + ACESSO + MUROS
@@ -1697,6 +1913,6 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   return{
     group,colliders,groundHeight,moveXZ,moveVehicle,zoneAt,
     terrainPose,twoWheelPose,cameraSafePosition,vehicleBlocked:blockedOBB,vehicleTurnAllowed,limit:LIMIT,
-    flatAreas:FLAT_AREAS,terrainInfoAt,canPlaceRect,addBoxCollider,removeCollider,updateWorld
+    flatAreas:FLAT_AREAS,roadNetwork,terrainInfoAt,canPlaceRect,addBoxCollider,removeCollider,updateWorld
   };
 }

@@ -1,6 +1,6 @@
 import*as THREE from'three';
 
-const LIMIT=400;
+const LIMIT=500;
 // Compatibilidade textual da revisão antiga: estes obstáculos NÃO existem mais no mundo.
 // RAMPA / PLATAFORMA · LOMBADA · GARAGEM · DEGRAUS
 const LEGACY_REVIEW_LABELS='RAMPA / PLATAFORMA · LOMBADA · GARAGEM · DEGRAUS';
@@ -30,7 +30,7 @@ function mat(color,roughness=.95){return new THREE.MeshStandardMaterial({color,r
 
 export function criarCampoDeProvas(scene,{debug=false}={}){
   const group=new THREE.Group();
-  group.name='mundoAberto800';
+  group.name='mundoAberto1000';
   scene.add(group);
 
   const groundMat=mat(0x667d50);
@@ -105,19 +105,19 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     return true;
   }
 
-  const ground=new THREE.Mesh(new THREE.PlaneGeometry(800,800,1,1),groundMat);
+  const ground=new THREE.Mesh(new THREE.PlaneGeometry(1000,1000,1,1),groundMat);
   ground.rotation.x=-Math.PI/2;
   ground.position.y=0;
-  ground.name='chaoMundo800';
+  ground.name='chaoMundo1000';
   group.add(ground);
 
   // A grade antiga continua existindo para a revisão técnica, mas só aparece em ?debug=1.
   const baseGrid=new THREE.GridHelper(200,100,0x506246,0x596d4c);
   baseGrid.position.y=.012;
 
-  const worldGrid=new THREE.GridHelper(800,400,0x455a45,0x4f654f);
+  const worldGrid=new THREE.GridHelper(1000,500,0x455a45,0x4f654f);
   worldGrid.position.y=.010;
-  worldGrid.name='gradeMundo800';
+  worldGrid.name='gradeMundo1000';
 
   if(debug){
     group.add(baseGrid);
@@ -414,7 +414,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
       ])
     }),
 
-    // Conectores rurais permitem viajar entre fazendas sem voltar para a cidade.
+    // Anel perimetral externo: amplia o mundo e cria uma rota contínua entre as saídas rurais.\n    Object.freeze({\n      id:'anel-perimetral',type:'terra',width:7.2,\n      sidewalks:false,sidewalkWidth:0,line:false,closed:true,segments:180,\n      points:Object.freeze([\n        Object.freeze([-440,-360]),Object.freeze([-250,-440]),\n        Object.freeze([40,-450]),Object.freeze([300,-420]),\n        Object.freeze([455,-300]),Object.freeze([465,-40]),\n        Object.freeze([450,220]),Object.freeze([330,405]),\n        Object.freeze([60,450]),Object.freeze([-220,435]),\n        Object.freeze([-430,320]),Object.freeze([-460,60]),\n        Object.freeze([-455,-170])\n      ])\n    }),\n    Object.freeze({\n      id:'ligacao-perimetral-leste',type:'terra',width:6.6,\n      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:55,\n      points:Object.freeze([Object.freeze([335,85]),Object.freeze([385,115]),Object.freeze([430,170])])\n    }),\n    Object.freeze({\n      id:'ligacao-perimetral-sudeste',type:'terra',width:6.6,\n      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:55,\n      points:Object.freeze([Object.freeze([312,-210]),Object.freeze([365,-270]),Object.freeze([430,-300])])\n    }),\n    Object.freeze({\n      id:'ligacao-perimetral-oeste',type:'terra',width:6.6,\n      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:55,\n      points:Object.freeze([Object.freeze([-292,-150]),Object.freeze([-370,-190]),Object.freeze([-455,-170])])\n    }),\n    Object.freeze({\n      id:'ligacao-perimetral-noroeste',type:'terra',width:6.6,\n      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:55,\n      points:Object.freeze([Object.freeze([-275,245]),Object.freeze([-360,300]),Object.freeze([-430,320])])\n    }),\n\n    // Conectores rurais permitem viajar entre fazendas sem voltar para a cidade.
     Object.freeze({
       id:'conector-rural-sul-leste',type:'terra',width:6.2,
       sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:125,
@@ -468,7 +468,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     }),
     Object.freeze({
       id:'hub-rural-leste',x:335,z:85,radius:10,surface:'terra',
-      roads:Object.freeze(['estrada-rural-leste','ramal-fazenda-leste'])
+      roads:Object.freeze(['estrada-rural-leste','ramal-fazenda-leste','ligacao-perimetral-leste'])
     }),
     Object.freeze({
       id:'bifurcacao-sudeste',x:285,z:20,radius:12,surface:'terra',
@@ -476,7 +476,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     }),
     Object.freeze({
       id:'hub-sudeste',x:312,z:-210,radius:12,surface:'terra',
-      roads:Object.freeze(['ramal-rural-sudeste','entrada-fazenda-sudeste','conector-rural-sul-leste'])
+      roads:Object.freeze(['ramal-rural-sudeste','entrada-fazenda-sudeste','conector-rural-sul-leste','ligacao-perimetral-sudeste'])
     }),
     Object.freeze({
       id:'hub-sul',x:35,z:-290,radius:12,surface:'terra',
@@ -492,11 +492,11 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     }),
     Object.freeze({
       id:'hub-oeste',x:-292,z:-150,radius:12,surface:'terra',
-      roads:Object.freeze(['estrada-rural-oeste','entrada-fazenda-oeste','conector-rural-sul-oeste'])
+      roads:Object.freeze(['estrada-rural-oeste','entrada-fazenda-oeste','conector-rural-sul-oeste','ligacao-perimetral-oeste'])
     }),
     Object.freeze({
       id:'hub-noroeste',x:-275,z:245,radius:10,surface:'terra',
-      roads:Object.freeze(['estrada-rural-noroeste','entrada-fazenda-noroeste'])
+      roads:Object.freeze(['estrada-rural-noroeste','entrada-fazenda-noroeste','ligacao-perimetral-noroeste'])
     })
   ]);
 

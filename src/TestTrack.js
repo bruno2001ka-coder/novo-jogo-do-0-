@@ -256,66 +256,144 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   floorMesh.name='pisoCasa';
   houseGroup.add(floorMesh);
 
+  // Forro interno contínuo: fecha completamente a casa na altura das paredes.
+  const ceilingMat=houseMat.clone();
+  ceilingMat.side=THREE.DoubleSide;
+  const ceiling=new THREE.Mesh(
+    new THREE.BoxGeometry(HOUSE.w-.34,.12,HOUSE.d-.34),
+    ceilingMat
+  );
+  ceiling.position.set(HOUSE.cx,HOUSE.h-.06,HOUSE.cz);
+  ceiling.name='forroInterno';
+  houseGroup.add(ceiling);
+
+  // Luz interna quente, sem sombra dinâmica para manter o custo baixo no mobile.
+  const interiorLight=new THREE.PointLight(0xffd7a3,14,13,2);
+  interiorLight.position.set(HOUSE.cx,2.28,HOUSE.cz);
+  interiorLight.name='luzInternaCasa';
+  houseGroup.add(interiorLight);
+
   // Rodapé externo levemente saliente para quebrar o aspecto de caixa lisa.
   houseDetailBox(HOUSE.w+.12,.18,.10,HOUSE.cx,.09,hz0-.18,trimMat,'rodapeFrontal');
   houseDetailBox(.10,.18,HOUSE.d+.12,hx0-.18,.09,HOUSE.cz,trimMat,'rodapeOeste');
   houseDetailBox(.10,.18,HOUSE.d+.12,hx1+.18,.09,HOUSE.cz,trimMat,'rodapeLeste');
 
   // TELHADO COLONIAL DE DUAS ÁGUAS.
-  const roofAngle=THREE.MathUtils.degToRad(20);
+  // Duas águas realmente inclinadas, beiral de 0,50 m e cumeeira contínua.
+  const roofAngle=THREE.MathUtils.degToRad(22);
   const roofOverhang=.50;
   const roofSpanZ=HOUSE.d+roofOverhang*2;
   const roofHalfRun=roofSpanZ/2;
   const roofRise=Math.tan(roofAngle)*roofHalfRun;
   const roofSlopeLength=roofHalfRun/Math.cos(roofAngle);
-  const roofThickness=.24;
+  const roofThickness=.22;
   const roofCenterY=HOUSE.h+roofRise/2;
 
   const frontRoof=new THREE.Mesh(
-    new THREE.BoxGeometry(HOUSE.w+roofOverhang*2,roofThickness,roofSlopeLength),
+    new THREE.BoxGeometry(
+      HOUSE.w+roofOverhang*2,
+      roofThickness,
+      roofSlopeLength
+    ),
     roofMat
   );
-  frontRoof.position.set(HOUSE.cx,roofCenterY,HOUSE.cz-roofHalfRun/2);
+  frontRoof.position.set(
+    HOUSE.cx,
+    roofCenterY,
+    HOUSE.cz-roofHalfRun/2
+  );
   frontRoof.rotation.x=-roofAngle;
   frontRoof.name='telhadoAguaFrontal';
   houseGroup.add(frontRoof);
 
   const backRoof=new THREE.Mesh(
-    new THREE.BoxGeometry(HOUSE.w+roofOverhang*2,roofThickness,roofSlopeLength),
+    new THREE.BoxGeometry(
+      HOUSE.w+roofOverhang*2,
+      roofThickness,
+      roofSlopeLength
+    ),
     roofMat
   );
-  backRoof.position.set(HOUSE.cx,roofCenterY,HOUSE.cz+roofHalfRun/2);
+  backRoof.position.set(
+    HOUSE.cx,
+    roofCenterY,
+    HOUSE.cz+roofHalfRun/2
+  );
   backRoof.rotation.x=roofAngle;
   backRoof.name='telhadoAguaTraseira';
   houseGroup.add(backRoof);
 
-  // Cumeeira grossa cobrindo a união das duas águas.
+  // Fileiras discretas simulam o ritmo das telhas coloniais sem textura pesada.
+  for(let i=1;i<=8;i++){
+    const t=i/9;
+    const y=HOUSE.h+roofRise*(1-t)+.13;
+
+    const frontRow=houseDetailBox(
+      HOUSE.w+roofOverhang*2+.04,.045,.11,
+      HOUSE.cx,y,HOUSE.cz-roofHalfRun*t,
+      roofMat,`telhaFrontal-${i}`
+    );
+    frontRow.rotation.x=-roofAngle;
+
+    const backRow=houseDetailBox(
+      HOUSE.w+roofOverhang*2+.04,.045,.11,
+      HOUSE.cx,y,HOUSE.cz+roofHalfRun*t,
+      roofMat,`telhaTraseira-${i}`
+    );
+    backRow.rotation.x=roofAngle;
+  }
+
+  // Cumeeira grossa cobrindo toda a união das duas águas.
   houseDetailBox(
-    HOUSE.w+roofOverhang*2+.08,.18,.22,
-    HOUSE.cx,HOUSE.h+roofRise+.03,HOUSE.cz,
+    HOUSE.w+roofOverhang*2+.16,.20,.26,
+    HOUSE.cx,HOUSE.h+roofRise+.04,HOUSE.cz,
     roofMat,'cumeeiraTelhado'
   );
 
-  // Oitões triangulares fecham os vãos sob a cobertura.
+  // Oitões sólidos. Material double-sided impede que o triângulo suma quando
+  // observado de dentro da casa.
+  const gableMat=houseMat.clone();
+  gableMat.side=THREE.DoubleSide;
+
   function addGable(z,name){
     const shape=new THREE.Shape();
     shape.moveTo(-HOUSE.w/2,0);
     shape.lineTo(HOUSE.w/2,0);
-    shape.lineTo(0,roofRise-.05);
+    shape.lineTo(0,roofRise+.02);
     shape.closePath();
+
     const geometry=new THREE.ExtrudeGeometry(shape,{
-      depth:.16,bevelEnabled:false,steps:1
+      depth:.24,
+      bevelEnabled:false,
+      steps:1,
+      curveSegments:1
     });
-    const mesh=new THREE.Mesh(geometry,houseMat);
-    mesh.position.set(HOUSE.cx,HOUSE.h,z-.08);
+    geometry.computeVertexNormals();
+
+    const mesh=new THREE.Mesh(geometry,gableMat);
+    mesh.position.set(HOUSE.cx,HOUSE.h,z-.12);
     mesh.name=name;
     houseGroup.add(mesh);
   }
+
   addGable(hz0,'oitaoFrontal');
   addGable(hz1,'oitaoTraseiro');
 
   // VARANDA FRONTAL RÚSTICA.
   const verandaDepth=2.45;
+
+  const verandaFloor=new THREE.Mesh(
+    new THREE.BoxGeometry(HOUSE.w+.35,.10,verandaDepth+.10),
+    concreteMat
+  );
+  verandaFloor.position.set(
+    HOUSE.cx,
+    .05,
+    hz0-verandaDepth/2+.02
+  );
+  verandaFloor.name='pisoVaranda';
+  houseGroup.add(verandaFloor);
+
   const verandaRoof=new THREE.Mesh(
     new THREE.BoxGeometry(HOUSE.w+.45,.16,verandaDepth+.28),
     roofMat

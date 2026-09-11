@@ -395,10 +395,10 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
       type:'asfalto',width:10.2,sidewalks:true,closed:false,segments:130,
       connects:['bairro-oeste','eixo-central-s','bairro-leste'],
       points:Object.freeze([
-        Object.freeze([-170,20]),Object.freeze([-110,21]),
-        Object.freeze([-55,22]),Object.freeze([0,22]),
-        Object.freeze([55,22]),Object.freeze([115,21]),
-        Object.freeze([180,20])
+        Object.freeze([-170,8]),Object.freeze([-110,8]),
+        Object.freeze([-55,8]),Object.freeze([0,8]),
+        Object.freeze([55,8]),Object.freeze([115,8]),
+        Object.freeze([180,8])
       ])
     }),
     Object.freeze({
@@ -426,7 +426,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
       type:'asfalto',width:7.2,sidewalks:true,closed:false,segments:90,
       connects:['avenida-inicial','rua-bairro-70','rua-bairro-118'],
       points:Object.freeze([
-        Object.freeze([-92,20]),Object.freeze([-91,52]),
+        Object.freeze([-92,8]),Object.freeze([-91,52]),
         Object.freeze([-90,82]),Object.freeze([-92,116]),
         Object.freeze([-105,145])
       ])
@@ -436,7 +436,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
       type:'asfalto',width:7.4,sidewalks:true,closed:false,segments:95,
       connects:['avenida-inicial','rua-bairro-70','rua-bairro-118'],
       points:Object.freeze([
-        Object.freeze([58,22]),Object.freeze([58,52]),
+        Object.freeze([58,8]),Object.freeze([58,52]),
         Object.freeze([57,82]),Object.freeze([56,118]),
         Object.freeze([67,155])
       ])
@@ -446,7 +446,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
       type:'asfalto',width:7.2,sidewalks:true,closed:false,segments:90,
       connects:['avenida-inicial','rua-bairro-70','rua-bairro-118'],
       points:Object.freeze([
-        Object.freeze([118,21]),Object.freeze([117,50]),
+        Object.freeze([118,8]),Object.freeze([117,50]),
         Object.freeze([116,81]),Object.freeze([115,116]),
         Object.freeze([126,153])
       ])
@@ -509,6 +509,23 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     });
   }
 
+  // Asfalto de acabamento cobre calcadas e faixas que se cruzariam visualmente.
+  const urbanIntersections=Object.freeze([
+    Object.freeze([-92,8]),Object.freeze([0,13]),
+    Object.freeze([58,8]),Object.freeze([118,8]),
+    Object.freeze([-90,70]),Object.freeze([30,70]),
+    Object.freeze([57,70]),Object.freeze([116,70]),
+    Object.freeze([-92,118]),Object.freeze([-5,119]),
+    Object.freeze([56,118]),Object.freeze([115,118])
+  ]);
+  const intersectionGeometry=new THREE.CylinderGeometry(7.4,7.4,.035,28);
+  for(const [x,z] of urbanIntersections){
+    const patch=new THREE.Mesh(intersectionGeometry,roadMat);
+    patch.position.set(x,.083,z);
+    patch.name='cruzamentoUrbano';
+    roadGroup.add(patch);
+  }
+
   // Detalhes viarios leves e independentes da fisica dos atores.
   const detailGroup=new THREE.Group();
   detailGroup.name='postesEArvores';
@@ -543,6 +560,40 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     return Number(urban(b.id))-Number(urban(a.id));
   });
 
+  function segmentDistanceSq(px,pz,ax,az,bx,bz){
+    const dx=bx-ax,dz=bz-az;
+    const lengthSq=dx*dx+dz*dz;
+    const t=lengthSq>0?clamp01(((px-ax)*dx+(pz-az)*dz)/lengthSq):0;
+    const x=ax+dx*t,z=az+dz*t;
+    return (px-x)*(px-x)+(pz-z)*(pz-z);
+  }
+
+  function clamp01(value){return Math.max(0,Math.min(1,value))}
+
+  function detailPositionBlocked(x,z,road,kind){
+    // Area de aparicao e corredor da casa precisam permanecer totalmente livres.
+    if(x*x+(z-22)*(z-22)<22*22)return true;
+    if(x>-60&&x<-8&&z>17&&z<58)return true;
+
+    const junctionClearance=kind==='tree'?12:9;
+    for(const [jx,jz] of urbanIntersections){
+      if((x-jx)*(x-jx)+(z-jz)*(z-jz)<junctionClearance*junctionClearance){
+        return true;
+      }
+    }
+
+    const objectPadding=kind==='tree'?1.8:.65;
+    for(const other of roadNetwork){
+      if(other===road)continue;
+      const edge=other.width/2+(other.sidewalks?1.65:.5)+objectPadding;
+      for(let i=1;i<other.points.length;i++){
+        const [ax,az]=other.points[i-1],[bx,bz]=other.points[i];
+        if(segmentDistanceSq(x,z,ax,az,bx,bz)<edge*edge)return true;
+      }
+    }
+    return false;
+  }
+
   for(const road of detailRoads){
     const points=road.points;
     if(road.type==='asfalto'){
@@ -552,7 +603,9 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
           next[0]-previous[0],0,next[1]-previous[1]
         ).normalize();
         const side=i%2?-1:1,nx=tangent.z*side,nz=-tangent.x*side;
-        const px=current[0]+nx*6.4,pz=current[1]+nz*6.4;
+        const poleOffset=road.width/2+(road.sidewalks?2.2:1.2);
+        const px=current[0]+nx*poleOffset,pz=current[1]+nz*poleOffset;
+        if(detailPositionBlocked(px,pz,road,'pole'))continue;
 
         detailDummy.position.set(px,2.25,pz);
         detailDummy.rotation.set(0,0,0);
@@ -561,7 +614,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
         poles.setMatrixAt(poleCount,detailDummy.matrix);
 
         detailDummy.position.set(
-          current[0]+nx*5.9,4.35,current[1]+nz*5.9
+          px-nx*.5,4.35,pz-nz*.5
         );
         detailDummy.rotation.set(0,Math.atan2(tangent.x,tangent.z),0);
         detailDummy.scale.set(1,1,1);
@@ -569,7 +622,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
         arms.setMatrixAt(poleCount,detailDummy.matrix);
 
         detailDummy.position.set(
-          current[0]+nx*5.25,4.22,current[1]+nz*5.25
+          px-nx*1.15,4.22,pz-nz*1.15
         );
         detailDummy.rotation.set(0,0,0);
         detailDummy.scale.set(1.35,.55,1.35);
@@ -586,9 +639,10 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
         next[0]-previous[0],0,next[1]-previous[1]
       ).normalize();
       const side=i%2?-1:1,nx=tangent.z*side,nz=-tangent.x*side;
-      const offset=road.type==='asfalto'?10.5:8.2;
+      const offset=road.width/2+(road.sidewalks?5.0:3.3);
       const size=.78+(treeCount%4)*.11;
       const x=current[0]+nx*offset,z=current[1]+nz*offset;
+      if(detailPositionBlocked(x,z,road,'tree'))continue;
 
       detailDummy.position.set(x,.68*size,z);
       detailDummy.rotation.set(0,(treeCount%7)*.43,0);

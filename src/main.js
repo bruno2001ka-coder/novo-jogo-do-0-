@@ -3,7 +3,7 @@ import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
 import{separarRodas}from'./Rodas.js';
 import{criarCampoDeProvas}from'./TestTrack.js';
 import{criarProfiler}from'./Profiler.js';
-import{FIXED_DT,MAX_PHYSICS_STEPS,approach,expAlpha,integrateVehicleSpeed,steeringAngle,bicycleYawDelta,planarApproach}from'./GamePhysics.js';
+import{FIXED_DT,MAX_PHYSICS_STEPS,approach,expAlpha,integrateVehicleSpeed,steeringAngle,bicycleYawRate,stabilizeYawRate,stabilizeAttitude,groundClampY,planarApproach}from'./GamePhysics.js';
 
 const $=id=>document.getElementById(id);
 const mobile=matchMedia('(pointer:coarse)').matches||innerWidth<900;
@@ -120,6 +120,8 @@ const vehicles={
     rollingDrag:1.05,aeroDrag:.014,slopeGravity:.82,
     steerLow:.54,steerHigh:.15,steerFadeStart:3.5,steerFadeEnd:16,
     steerResponse:5.8,steerState:0,wheelBase:1.42,
+    yawRate:0,maxYawRate:1.7,yawResponse:9,angularDamping:12,
+    maxPitch:.32,maxRoll:.48,
     lean:.34,label:'MOTO',wheels:null,radius:.44,
     halfLength:1.0,halfWidth:.27,maxStep:.22
   },
@@ -129,7 +131,9 @@ const vehicles={
     rollingDrag:1.15,aeroDrag:.012,slopeGravity:.78,
     steerLow:.56,steerHigh:.16,steerFadeStart:4.5,steerFadeEnd:20,
     steerResponse:4.8,steerState:0,wheelBase:2.55,
-    lean:.055,label:'CARRO',wheels:null,radius:.92,
+    yawRate:0,maxYawRate:.95,yawResponse:8.5,angularDamping:16,
+    maxPitch:.22,maxRoll:.045,
+    lean:0,label:'CARRO',wheels:null,radius:.92,
     halfLength:1.85,halfWidth:.78,maxStep:.18
   }
 };
@@ -331,7 +335,7 @@ function reset(){
   }else{
     const v=vehicles[mode],s=SPAWN[mode];
     v.obj.position.set(s.x,track.groundHeight(s.x,s.z),s.z);
-    v.obj.rotation.set(0,0,0);v.speed=0;v.steerState=0;resetWheels(v);
+    v.obj.rotation.set(0,0,0);v.speed=0;v.steerState=0;v.yawRate=0;resetWheels(v);
   }
   snapRenderStates();
 }
@@ -466,31 +470,44 @@ function getVehiclePose(v,name){
     :track.terrainPose(v.obj.position.x,v.obj.position.z,v.obj.rotation.y,v.halfLength,v.halfWidth);
 }
 
+function vehicleGroundClearance(v){
+  if(!v.wheels?.length)return .025;
+  const avg=v.wheels.reduce((sum,w)=>sum+Math.max(.05,w.raio||.3),0)/v.wheels.length;
+  return THREE.MathUtils.clamp(avg*.08,.02,.045);
+}
+
 function applyVehicleGroundPose(v,steerAngleValue,dt,name){
   const pose=getVehiclePose(v,name);
-  v.obj.position.y=pose.y;
-  const a=expAlpha(12,dt);
-  v.obj.rotation.x=THREE.MathUtils.lerp(v.obj.rotation.x,pose.pitch,a);
+  const a=expAlpha(14,dt);
 
   const speedRatio=THREE.MathUtils.clamp(Math.abs(v.speed)/Math.max(1,v.max),0,1);
-  // Carro não inclina artificialmente ao esterçar: o root fica apoiado no terreno.
-  // Na moto a inclinação permanece, mas levantamos o pivot o suficiente para a lateral não cortar o piso.
   const turnLean=name==='moto'
     ?THREE.MathUtils.clamp(-steerAngleValue*speedRatio*1.15,-.46,.46)
     :0;
-  const rollTarget=pose.roll+turnLean;
-  const leanClearance=name==='moto'?Math.abs(Math.sin(turnLean))*v.halfWidth:0;
-  v.obj.rotation.z=THREE.MathUtils.lerp(v.obj.rotation.z,rollTarget,expAlpha(10,dt));
 
-  // O root dos modelos fica na base do veículo. Ao inclinar em X/Z, parte da carroceria
-  // pode girar para baixo do piso. Compensa exatamente essa queda geométrica.
+  const stable=stabilizeAttitude(
+    pose.pitch,
+    name==='moto'?pose.roll+turnLean:pose.roll,
+    v
+  );
+
+  v.obj.rotation.x=THREE.MathUtils.lerp(v.obj.rotation.x,stable.pitch,a);
+  v.obj.rotation.z=THREE.MathUtils.lerp(v.obj.rotation.z,stable.roll,expAlpha(14,dt));
+
+  // Como o root do GLB foi normalizado para a base do modelo, inclinar o root pode fazer
+  // uma quina descer abaixo de Y. Esta folga compensa a geometria inclinada.
   const pitchClearance=Math.abs(Math.sin(v.obj.rotation.x))*v.halfLength;
   const rollClearance=Math.abs(Math.sin(v.obj.rotation.z))*v.halfWidth;
-  const baseFloor=track.groundHeight(v.obj.position.x,v.obj.position.z);
-  v.obj.position.y=Math.max(
-    pose.y+leanClearance+pitchClearance+rollClearance+.025,
-    baseFloor+.025
+  const suspensionClearance=vehicleGroundClearance(v);
+  const centerFloor=track.groundHeight(v.obj.position.x,v.obj.position.z);
+
+  const supportedY=Math.max(
+    pose.y+pitchClearance+rollClearance+suspensionClearance,
+    centerFloor+suspensionClearance
   );
+
+  // Última barreira: a base nunca pode ficar abaixo do terreno.
+  v.obj.position.y=groundClampY(supportedY,centerFloor,suspensionClearance);
   return pose;
 }
 
@@ -509,7 +526,10 @@ function drive(dt,v,name){
   if(Math.abs(steerTarget)<.01)v.steerState=approach(v.steerState,0,v.steerResponse*1.25*dt);
 
   const wheelAngle=steeringAngle(v.steerState,v.speed,v);
-  const dyaw=bicycleYawDelta(v.speed,wheelAngle,v.wheelBase,dt);
+  const targetYawRate=bicycleYawRate(v.speed,wheelAngle,v.wheelBase);
+  v.yawRate=stabilizeYawRate(v.yawRate,targetYawRate,steerTarget,v,dt);
+
+  const dyaw=v.yawRate*dt;
   if(Math.abs(dyaw)>1e-6){
     const candidateYaw=v.obj.rotation.y+dyaw;
     if(track.vehicleTurnAllowed(
@@ -518,6 +538,8 @@ function drive(dt,v,name){
     )){
       v.obj.rotation.y=candidateYaw;
     }else{
+      // Colisão durante a curva mata a rotação acumulada em vez de deixar o carro "pião".
+      v.yawRate=0;
       v.speed*=.72;
       v.steerState=approach(v.steerState,0,v.steerResponse*1.5*dt);
     }

@@ -15,6 +15,12 @@
 // diferentes se a comparação for por ÍNDICE. Comparando por POSIÇÃO, a peça volta a ser uma só.
 import*as THREE from'three';
 
+export function sanitizarRaioRoda(raio,{min=.16,max=.65,fallback=.32}={}){
+  if(!Number.isFinite(raio)||raio<=0)return fallback;
+  return THREE.MathUtils.clamp(raio,min,max);
+}
+
+
 // Uma ilha pequena demais é parafuso, antena, retrovisor — não roda.
 const MIN_VERTICES=40;
 
@@ -211,8 +217,13 @@ export function separarRodas(raiz,quantas=4){
     // metros de mundo — misturar as duas dava uma roda girando na proporção errada (medido: o pneu
     // parecia ter 48 cm de raio num carro de 1,97 m, quando tem 18).
     const escala=new THREE.Vector3();m.getWorldScale(escala);
+    const raioMedido=pneu.raio*Math.max(Math.abs(escala.x),Math.abs(escala.y),Math.abs(escala.z));
+    const raioSeguro=sanitizarRaioRoda(
+      raioMedido,
+      quantas===2?{min:.18,max:.55,fallback:.34}:{min:.18,max:.58,fallback:.32}
+    );
     rodas.push({
-      pivo,malha:m,eixoGiro:eixo,raio:pneu.raio*escala.x,
+      pivo,malha:m,eixoGiro:eixo,raio:raioSeguro,raioMedido,
       dianteira:Number(chave.split('|')[0])<0,
     });
   }

@@ -105,19 +105,21 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   // Mantém a grade central original como referência técnica.
   const baseGrid=new THREE.GridHelper(200,100,0x506246,0x596d4c);
   baseGrid.position.y=.012;
+  baseGrid.visible=debug;
   group.add(baseGrid);
 
-  // Grade completa na mesma escala do outro jogo: 520 x 520 m.
-  const worldGrid=new THREE.GridHelper(520,260,0x455a45,0x4f654f);
+  // Grade tecnica do mapa inteiro, visivel apenas com ?debug=1.
+  const worldGrid=new THREE.GridHelper(1000,500,0x455a45,0x4f654f);
   worldGrid.position.y=.010;
-  worldGrid.name='gradeMundo520';
+  worldGrid.visible=debug;
+  worldGrid.name='gradeMundo1000';
   group.add(worldGrid);
 
   // Antigo campo de testes removido: sem pista reta, cones, rampas, lombadas,
   // garagem de teste, parede de impacto ou degraus. Daqui em diante o chão é mundo aberto.
 
   // ---------------------------------------------------------------------------
-  // MALHA VIÁRIA DE MUNDO ABERTO — 520 x 520 m
+  // MALHA VIÁRIA DE MUNDO ABERTO — 1.000 x 1.000 m
   // Vias com curvas longas, circuitos, cruzamentos e rotas alternativas.
   // ---------------------------------------------------------------------------
   const roadGroup=new THREE.Group();
@@ -389,6 +391,67 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
       ])
     }),
     Object.freeze({
+      id:'avenida-inicial',
+      type:'asfalto',width:10.2,sidewalks:true,closed:false,segments:130,
+      connects:['bairro-oeste','eixo-central-s','bairro-leste'],
+      points:Object.freeze([
+        Object.freeze([-170,20]),Object.freeze([-110,21]),
+        Object.freeze([-55,22]),Object.freeze([0,22]),
+        Object.freeze([55,22]),Object.freeze([115,21]),
+        Object.freeze([180,20])
+      ])
+    }),
+    Object.freeze({
+      id:'rua-bairro-70',
+      type:'asfalto',width:7.6,sidewalks:true,closed:false,segments:110,
+      connects:['bairro-oeste','eixo-central-s','bairro-leste'],
+      points:Object.freeze([
+        Object.freeze([-120,70]),Object.freeze([-65,70]),
+        Object.freeze([-8,70]),Object.freeze([52,70]),
+        Object.freeze([112,69]),Object.freeze([165,68])
+      ])
+    }),
+    Object.freeze({
+      id:'rua-bairro-118',
+      type:'asfalto',width:7.6,sidewalks:true,closed:false,segments:110,
+      connects:['travessia-norte','eixo-central-s','diagonal-leste'],
+      points:Object.freeze([
+        Object.freeze([-130,116]),Object.freeze([-75,118]),
+        Object.freeze([-18,120]),Object.freeze([45,119]),
+        Object.freeze([105,117]),Object.freeze([160,114])
+      ])
+    }),
+    Object.freeze({
+      id:'rua-oeste',
+      type:'asfalto',width:7.2,sidewalks:true,closed:false,segments:90,
+      connects:['avenida-inicial','rua-bairro-70','rua-bairro-118'],
+      points:Object.freeze([
+        Object.freeze([-92,20]),Object.freeze([-91,52]),
+        Object.freeze([-90,82]),Object.freeze([-92,116]),
+        Object.freeze([-105,145])
+      ])
+    }),
+    Object.freeze({
+      id:'rua-leste',
+      type:'asfalto',width:7.4,sidewalks:true,closed:false,segments:95,
+      connects:['avenida-inicial','rua-bairro-70','rua-bairro-118'],
+      points:Object.freeze([
+        Object.freeze([58,22]),Object.freeze([58,52]),
+        Object.freeze([57,82]),Object.freeze([56,118]),
+        Object.freeze([67,155])
+      ])
+    }),
+    Object.freeze({
+      id:'rua-leste-2',
+      type:'asfalto',width:7.2,sidewalks:true,closed:false,segments:90,
+      connects:['avenida-inicial','rua-bairro-70','rua-bairro-118'],
+      points:Object.freeze([
+        Object.freeze([118,21]),Object.freeze([117,50]),
+        Object.freeze([116,81]),Object.freeze([115,116]),
+        Object.freeze([126,153])
+      ])
+    }),
+    Object.freeze({
       id:'anel-externo',
       type:'cascalho',width:7.4,sidewalks:false,closed:true,segments:180,
       connects:['ligacao-leste','ligacao-sul','ligacao-oeste'],
@@ -469,7 +532,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     const curve=curveFromXZ(road.points,road.closed);
     const points=road.points;
     if(road.type==='asfalto'){
-      for(let i=1;i<points.length-1&&poleCount<34;i+=2){
+      for(let i=1;i<points.length-1&&poleCount<54;i+=2){
         const current=points[i],previous=points[i-1],next=points[i+1]||current;
         const tangent=new THREE.Vector3(next[0]-previous[0],0,next[1]-previous[1]).normalize();
         const side=i%2?-1:1,nx=tangent.z*side,nz=-tangent.x*side;
@@ -487,7 +550,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
         poleCount++;
       }
     }
-    for(let i=0;i<points.length&&treeCount<58;i+=2){
+    for(let i=0;i<points.length&&treeCount<96;i+=2){
       const current=points[i],previous=points[Math.max(0,i-1)],next=points[Math.min(points.length-1,i+1)];
       const tangent=new THREE.Vector3(next[0]-previous[0],0,next[1]-previous[1]).normalize();
       const side=i%2?-1:1,nx=tangent.z*side,nz=-tangent.x*side;

@@ -3,7 +3,7 @@ import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
 import{separarRodas}from'./Rodas.js';
 import{criarCampoDeProvas}from'./TestTrack.js';
 import{criarProfiler}from'./Profiler.js';
-import{FIXED_DT,MAX_PHYSICS_STEPS,approach,expAlpha,integrateVehicleSpeed,steeringAngle,bicycleYawRate,stabilizeYawRate,stabilizeAttitude,groundClampY,planarApproach}from'./GamePhysics.js';
+import{FIXED_DT,MAX_PHYSICS_STEPS,approach,expAlpha,integrateVehicleSpeed,steeringAngle,arcadeTurnDelta,clampPitch,clampLean,groundClampY,planarApproach}from'./GamePhysics.js';
 
 const $=id=>document.getElementById(id);
 const mobile=matchMedia('(pointer:coarse)').matches||innerWidth<900;
@@ -116,24 +116,18 @@ const character={
 const vehicles={
   moto:{
     obj:bike,speed:0,max:18,maxReverse:5.8,
-    accelForward:11.5,accelReverse:5.2,brakeDecel:17,
-    rollingDrag:1.05,aeroDrag:.014,slopeGravity:.82,
-    steerLow:.54,steerHigh:.15,steerFadeStart:3.5,steerFadeEnd:16,
-    steerResponse:5.8,steerState:0,wheelBase:1.42,
-    yawRate:0,maxYawRate:1.7,yawResponse:9,angularDamping:12,
-    maxPitch:.32,maxRoll:.48,
-    lean:.34,label:'MOTO',wheels:null,radius:.44,
+    accelForward:11.5,accelReverse:5.2,brakeDecel:17,coastDecel:4.0,
+    steerLow:.46,steerHigh:.22,steerResponse:7.5,steerState:0,
+    turnRateLow:1.55,turnRateHigh:.78,turnGripSpeed:2.0,
+    label:'MOTO',wheels:null,radius:.44,
     halfLength:1.0,halfWidth:.27,maxStep:.22
   },
   car:{
     obj:car,speed:0,max:23,maxReverse:7.2,
-    accelForward:8.8,accelReverse:5.4,brakeDecel:18,
-    rollingDrag:1.15,aeroDrag:.012,slopeGravity:.78,
-    steerLow:.56,steerHigh:.16,steerFadeStart:4.5,steerFadeEnd:20,
-    steerResponse:4.8,steerState:0,wheelBase:2.55,
-    yawRate:0,maxYawRate:.95,yawResponse:8.5,angularDamping:16,
-    maxPitch:.22,maxRoll:.045,
-    lean:0,label:'CARRO',wheels:null,radius:.92,
+    accelForward:8.8,accelReverse:5.4,brakeDecel:18,coastDecel:3.2,
+    steerLow:.50,steerHigh:.20,steerResponse:6.2,steerState:0,
+    turnRateLow:1.25,turnRateHigh:.58,turnGripSpeed:2.4,
+    label:'CARRO',wheels:null,radius:.92,
     halfLength:1.85,halfWidth:.78,maxStep:.18
   }
 };
@@ -335,7 +329,7 @@ function reset(){
   }else{
     const v=vehicles[mode],s=SPAWN[mode];
     v.obj.position.set(s.x,track.groundHeight(s.x,s.z),s.z);
-    v.obj.rotation.set(0,0,0);v.speed=0;v.steerState=0;v.yawRate=0;resetWheels(v);
+    v.obj.rotation.set(0,0,0);v.speed=0;v.steerState=0;resetWheels(v);
   }
   snapRenderStates();
 }
@@ -389,6 +383,10 @@ function updateCharacterAnimation(dt,{moving=false,running=false,speed=0,pilot=f
 }
 
 function walk(dt){
+  // Personagem arcade: o root nunca inclina. Só yaw (Y) é permitido.
+  player.rotation.x=0;
+  player.rotation.z=0;
+
   const ix=(keys.KeyD?1:0)-(keys.KeyA?1:0)+joy.x;
   const iz=(keys.KeyW?1:0)-(keys.KeyS?1:0)-joy.y;
   const inputLen=Math.hypot(ix,iz);
@@ -423,6 +421,7 @@ function walk(dt){
   const next=planarApproach(locomotion.vx,locomotion.vz,targetX,targetZ,accel,dt);
   locomotion.vx=next.x;locomotion.vz=next.z;
 
+  // Movimento estritamente X/Z. Y não participa do vetor de caminhada.
   const wantedX=locomotion.vx*dt,wantedZ=locomotion.vz*dt;
   const step=track.moveXZ(player.position,wantedX,wantedZ,.33,.31);
   if(Math.abs(step.x-wantedX)>.002)locomotion.vx=0;
@@ -442,8 +441,7 @@ function walk(dt){
   player.position.y+=velY*dt;
 
   const floor=track.groundHeight(player.position.x,player.position.z);
-  const drop=player.position.y-floor;
-  if(player.position.y<=floor||(velY<=0&&drop<=.16)){
+  if(player.position.y<=floor||(velY<=0&&player.position.y-floor<=.16)){
     player.position.y=floor;
     velY=0;
     locomotion.grounded=true;
@@ -451,6 +449,11 @@ function walk(dt){
   }else{
     locomotion.grounded=false;
   }
+
+  // Trava absoluta contra afundamento e tombamento.
+  player.position.y=groundClampY(player.position.y,floor,0);
+  player.rotation.x=0;
+  player.rotation.z=0;
 
   return{moving:horizontalSpeed>.08,running,speed:horizontalSpeed};
 }
@@ -473,42 +476,78 @@ function getVehiclePose(v,name){
 function vehicleGroundClearance(v){
   if(!v.wheels?.length)return .025;
   const avg=v.wheels.reduce((sum,w)=>sum+Math.max(.05,w.raio||.3),0)/v.wheels.length;
-  return THREE.MathUtils.clamp(avg*.08,.02,.045);
+  return THREE.MathUtils.clamp(avg*.07,.02,.04);
 }
 
 function applyVehicleGroundPose(v,steerAngleValue,dt,name){
   const pose=getVehiclePose(v,name);
-  const a=expAlpha(14,dt);
+  const yaw=v.obj.rotation.y;
+  const pitchTarget=clampPitch(pose.pitch,20);
 
-  const speedRatio=THREE.MathUtils.clamp(Math.abs(v.speed)/Math.max(1,v.max),0,1);
-  const turnLean=name==='moto'
-    ?THREE.MathUtils.clamp(-steerAngleValue*speedRatio*1.15,-.46,.46)
-    :0;
+  if(name==='car'){
+    // Carro GTA clássico: roll sempre zero, pitch só acompanha levemente a rampa.
+    v.obj.rotation.set(
+      THREE.MathUtils.lerp(v.obj.rotation.x,pitchTarget,expAlpha(10,dt)),
+      yaw,
+      0
+    );
+  }else{
+    // Moto arcade: sem tombar. Apenas lean visual máximo de 15 graus.
+    const speedRatio=THREE.MathUtils.clamp(Math.abs(v.speed)/Math.max(1,v.max),0,1);
+    const steerRatio=THREE.MathUtils.clamp(
+      steerAngleValue/Math.max(.01,v.steerLow),
+      -1,1
+    );
+    const leanTarget=clampLean(-steerRatio*speedRatio*THREE.MathUtils.degToRad(15),15);
 
-  const stable=stabilizeAttitude(
-    pose.pitch,
-    name==='moto'?pose.roll+turnLean:pose.roll,
-    v
-  );
+    v.obj.rotation.set(
+      THREE.MathUtils.lerp(v.obj.rotation.x,pitchTarget,expAlpha(10,dt)),
+      yaw,
+      THREE.MathUtils.lerp(v.obj.rotation.z,leanTarget,expAlpha(12,dt))
+    );
+  }
 
-  v.obj.rotation.x=THREE.MathUtils.lerp(v.obj.rotation.x,stable.pitch,a);
-  v.obj.rotation.z=THREE.MathUtils.lerp(v.obj.rotation.z,stable.roll,expAlpha(14,dt));
+  // Hard safety: nunca permitir cambalhota/capotamento.
+  const danger=THREE.MathUtils.degToRad(30);
+  if(!Number.isFinite(v.obj.rotation.x)||!Number.isFinite(v.obj.rotation.z)||
+     Math.abs(v.obj.rotation.x)>danger||Math.abs(v.obj.rotation.z)>danger){
+    v.obj.rotation.x=0;
+    v.obj.rotation.z=0;
+  }
 
-  // Como o root do GLB foi normalizado para a base do modelo, inclinar o root pode fazer
-  // uma quina descer abaixo de Y. Esta folga compensa a geometria inclinada.
-  const pitchClearance=Math.abs(Math.sin(v.obj.rotation.x))*v.halfLength;
-  const rollClearance=Math.abs(Math.sin(v.obj.rotation.z))*v.halfWidth;
-  const suspensionClearance=vehicleGroundClearance(v);
+  const clearance=vehicleGroundClearance(v);
   const centerFloor=track.groundHeight(v.obj.position.x,v.obj.position.z);
+  const supportY=Math.max(pose.y,centerFloor);
 
-  const supportedY=Math.max(
-    pose.y+pitchClearance+rollClearance+suspensionClearance,
-    centerFloor+suspensionClearance
-  );
-
-  // Última barreira: a base nunca pode ficar abaixo do terreno.
-  v.obj.position.y=groundClampY(supportedY,centerFloor,suspensionClearance);
+  v.obj.position.y=groundClampY(supportY,centerFloor,clearance);
   return pose;
+}
+
+function enforceArcadeLocks(){
+  // Personagem sempre 100% em pé.
+  player.rotation.x=0;
+  player.rotation.z=0;
+  const playerFloor=track.groundHeight(player.position.x,player.position.z);
+  player.position.y=groundClampY(player.position.y,playerFloor,0);
+
+  for(const [name,v] of Object.entries(vehicles)){
+    const floor=track.groundHeight(v.obj.position.x,v.obj.position.z);
+    v.obj.position.y=groundClampY(v.obj.position.y,floor,vehicleGroundClearance(v));
+
+    if(name==='car'){
+      v.obj.rotation.x=clampPitch(v.obj.rotation.x,20);
+      v.obj.rotation.z=0;
+    }else{
+      v.obj.rotation.x=clampPitch(v.obj.rotation.x,20);
+      v.obj.rotation.z=clampLean(v.obj.rotation.z,15);
+    }
+
+    const danger=THREE.MathUtils.degToRad(30);
+    if(Math.abs(v.obj.rotation.x)>danger||Math.abs(v.obj.rotation.z)>danger){
+      v.obj.rotation.x=0;
+      v.obj.rotation.z=0;
+    }
+  }
 }
 
 function drive(dt,v,name){
@@ -519,17 +558,16 @@ function drive(dt,v,name){
   const reverse=Math.max(keyReverse,joyReverse);
   const steerTarget=THREE.MathUtils.clamp(((keys.KeyA?1:0)-(keys.KeyD?1:0))-joy.x,-1,1);
 
-  const poseBefore=getVehiclePose(v,name);
-  v.speed=integrateVehicleSpeed(v.speed,throttle,reverse,v,dt,poseBefore.pitch);
+  v.speed=integrateVehicleSpeed(v.speed,throttle,reverse,v,dt);
 
   v.steerState=approach(v.steerState,steerTarget,v.steerResponse*dt);
   if(Math.abs(steerTarget)<.01)v.steerState=approach(v.steerState,0,v.steerResponse*1.25*dt);
 
   const wheelAngle=steeringAngle(v.steerState,v.speed,v);
-  const targetYawRate=bicycleYawRate(v.speed,wheelAngle,v.wheelBase);
-  v.yawRate=stabilizeYawRate(v.yawRate,targetYawRate,steerTarget,v,dt);
 
-  const dyaw=v.yawRate*dt;
+  // Yaw arcade direto: não existe inércia angular acumulada.
+  // Soltou o direcional, parou de girar.
+  const dyaw=arcadeTurnDelta(v.speed,v.steerState,v,dt);
   if(Math.abs(dyaw)>1e-6){
     const candidateYaw=v.obj.rotation.y+dyaw;
     if(track.vehicleTurnAllowed(
@@ -538,8 +576,6 @@ function drive(dt,v,name){
     )){
       v.obj.rotation.y=candidateYaw;
     }else{
-      // Colisão durante a curva mata a rotação acumulada em vez de deixar o carro "pião".
-      v.yawRate=0;
       v.speed*=.72;
       v.steerState=approach(v.steerState,0,v.steerResponse*1.5*dt);
     }
@@ -637,6 +673,9 @@ function simulate(dt){
   }else{
     drive(dt,vehicles[mode],mode);
   }
+
+  // Última linha de defesa em TODO passo da simulação.
+  enforceArcadeLocks();
 }
 
 function frame(now){
@@ -660,6 +699,11 @@ function frame(now){
 
   const renderAlpha=accumulator/FIXED_DT;
   applyRenderInterpolation(renderAlpha);
+
+  // Travas também no estado visual interpolado.
+  player.rotation.x=0;player.rotation.z=0;
+  car.rotation.x=clampPitch(car.rotation.x,20);car.rotation.z=0;
+  bike.rotation.x=clampPitch(bike.rotation.x,20);bike.rotation.z=clampLean(bike.rotation.z,15);
 
   if(mode==='foot')updateCharacterAnimation(rawDt,characterMotion);
   else if(mode==='moto')updateCharacterAnimation(rawDt,{pilot:true});

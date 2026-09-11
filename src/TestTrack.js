@@ -387,9 +387,9 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
         Object.freeze([190,76]),
         Object.freeze([176,96])
       ])
-    })
+    }),
     Object.freeze({
-      id:'anel-perimetral',
+      id:'anel-externo',
       type:'cascalho',width:7.4,sidewalks:false,closed:true,segments:180,
       connects:['ligacao-leste','ligacao-sul','ligacao-oeste'],
       points:Object.freeze([
@@ -405,7 +405,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     Object.freeze({
       id:'ligacao-leste',
       type:'cascalho',width:6.8,sidewalks:false,closed:false,segments:70,
-      connects:['rota-rural-sudeste','anel-perimetral'],
+      connects:['rota-rural-sudeste','anel-externo'],
       points:Object.freeze([
         Object.freeze([176,96]),Object.freeze([245,125]),
         Object.freeze([320,150]),Object.freeze([390,190]),
@@ -415,7 +415,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     Object.freeze({
       id:'ligacao-sul',
       type:'cascalho',width:6.8,sidewalks:false,closed:false,segments:70,
-      connects:['acesso-fazenda-sul','anel-perimetral'],
+      connects:['acesso-fazenda-sul','anel-externo'],
       points:Object.freeze([
         Object.freeze([151,-192]),Object.freeze([135,-255]),
         Object.freeze([105,-330]),Object.freeze([70,-405])
@@ -424,7 +424,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     Object.freeze({
       id:'ligacao-oeste',
       type:'cascalho',width:6.8,sidewalks:false,closed:false,segments:70,
-      connects:['acesso-fazenda-oeste','anel-perimetral'],
+      connects:['acesso-fazenda-oeste','anel-externo'],
       points:Object.freeze([
         Object.freeze([-170,-177]),Object.freeze([-255,-225]),
         Object.freeze([-345,-285]),Object.freeze([-445,-320])

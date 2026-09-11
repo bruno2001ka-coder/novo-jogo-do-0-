@@ -13,7 +13,7 @@ ok('1 núcleo modular mínimo',JSON.stringify(files)===JSON.stringify(['Profiler
 ok('2 sem sistemas antigos pesados',!/favela|pol[ií]cia|helic[oó]ptero|viatura|npc|economia|cultivo/i.test(main+track+profiler));
 ok('3 profiler técnico existe',main.includes('criarProfiler')&&profiler.includes('renderer.info')&&profiler.includes('frame p95'));
 ok('4 campo de provas funcional',track.includes('RAMPA / PLATAFORMA')&&track.includes('LOMBADA')&&track.includes('GARAGEM')&&track.includes('DEGRAUS'));
-ok('5 colisão simples com slide',track.includes('function moveXZ')&&track.includes('blocked')&&main.includes('track.moveXZ'));
+ok('5 colisão simples com slide e posição real',track.includes('function moveXZ')&&track.includes('blocked')&&main.includes('track.moveXZ(player.position')&&main.includes('track.moveXZ(v.obj.position'));
 ok('6 terreno de teste afeta personagem e veículos',main.includes('track.groundHeight')&&main.includes('track.terrainPose'));
 ok('7 rodas continuam físicas visuais',main.includes('distance/Math.max(.05,r.raio')&&main.includes('if(r.dianteira)r.pivo.rotation.y=steerVisual'));
 ok('8 slalom usa instancing',track.includes('new THREE.InstancedMesh'));

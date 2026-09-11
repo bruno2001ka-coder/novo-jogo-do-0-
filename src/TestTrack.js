@@ -422,7 +422,42 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
       ])
     }),
 
-    // Anel perimetral externo: amplia o mundo e cria uma rota contínua entre as saídas rurais.\n    Object.freeze({\n      id:'anel-perimetral',type:'terra',width:7.2,\n      sidewalks:false,sidewalkWidth:0,line:false,closed:true,segments:180,\n      points:Object.freeze([\n        Object.freeze([-440,-360]),Object.freeze([-250,-440]),\n        Object.freeze([40,-450]),Object.freeze([300,-420]),\n        Object.freeze([455,-300]),Object.freeze([465,-40]),\n        Object.freeze([450,220]),Object.freeze([330,405]),\n        Object.freeze([60,450]),Object.freeze([-220,435]),\n        Object.freeze([-430,320]),Object.freeze([-460,60]),\n        Object.freeze([-455,-170])\n      ])\n    }),\n    Object.freeze({\n      id:'ligacao-perimetral-leste',type:'terra',width:6.6,\n      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:55,\n      points:Object.freeze([Object.freeze([335,85]),Object.freeze([385,115]),Object.freeze([430,170])])\n    }),\n    Object.freeze({\n      id:'ligacao-perimetral-sudeste',type:'terra',width:6.6,\n      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:55,\n      points:Object.freeze([Object.freeze([312,-210]),Object.freeze([365,-270]),Object.freeze([430,-300])])\n    }),\n    Object.freeze({\n      id:'ligacao-perimetral-oeste',type:'terra',width:6.6,\n      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:55,\n      points:Object.freeze([Object.freeze([-292,-150]),Object.freeze([-370,-190]),Object.freeze([-455,-170])])\n    }),\n    Object.freeze({\n      id:'ligacao-perimetral-noroeste',type:'terra',width:6.6,\n      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:55,\n      points:Object.freeze([Object.freeze([-275,245]),Object.freeze([-360,300]),Object.freeze([-430,320])])\n    }),\n\n    // Conectores rurais permitem viajar entre fazendas sem voltar para a cidade.
+    // Anel perimetral externo: amplia o mundo e cria uma rota contínua entre as saídas rurais.
+    Object.freeze({
+      id:'anel-perimetral',type:'terra',width:7.2,
+      sidewalks:false,sidewalkWidth:0,line:false,closed:true,segments:180,
+      points:Object.freeze([
+        Object.freeze([-440,-360]),Object.freeze([-250,-440]),
+        Object.freeze([40,-450]),Object.freeze([300,-420]),
+        Object.freeze([455,-300]),Object.freeze([465,-40]),
+        Object.freeze([450,220]),Object.freeze([330,405]),
+        Object.freeze([60,450]),Object.freeze([-220,435]),
+        Object.freeze([-430,320]),Object.freeze([-460,60]),
+        Object.freeze([-455,-170])
+      ])
+    }),
+    Object.freeze({
+      id:'ligacao-perimetral-leste',type:'terra',width:6.6,
+      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:55,
+      points:Object.freeze([Object.freeze([335,85]),Object.freeze([385,115]),Object.freeze([430,170])])
+    }),
+    Object.freeze({
+      id:'ligacao-perimetral-sudeste',type:'terra',width:6.6,
+      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:55,
+      points:Object.freeze([Object.freeze([312,-210]),Object.freeze([365,-270]),Object.freeze([430,-300])])
+    }),
+    Object.freeze({
+      id:'ligacao-perimetral-oeste',type:'terra',width:6.6,
+      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:55,
+      points:Object.freeze([Object.freeze([-292,-150]),Object.freeze([-370,-190]),Object.freeze([-455,-170])])
+    }),
+    Object.freeze({
+      id:'ligacao-perimetral-noroeste',type:'terra',width:6.6,
+      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:55,
+      points:Object.freeze([Object.freeze([-275,245]),Object.freeze([-360,300]),Object.freeze([-430,320])])
+    }),
+
+    // Conectores rurais permitem viajar entre fazendas sem voltar para a cidade.
     Object.freeze({
       id:'conector-rural-sul-leste',type:'terra',width:6.2,
       sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:125,

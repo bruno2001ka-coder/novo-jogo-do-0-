@@ -468,7 +468,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     }),
     Object.freeze({
       id:'hub-rural-leste',x:335,z:85,radius:10,surface:'terra',
-      roads:Object.freeze(['estrada-rural-leste','ramal-fazenda-leste','ligacao-perimetral-leste'])
+      roads:Object.freeze(['estrada-rural-leste','ramal-fazenda-leste','ligacao-perimetral-leste','anel-perimetral'])
     }),
     Object.freeze({
       id:'bifurcacao-sudeste',x:285,z:20,radius:12,surface:'terra',
@@ -476,7 +476,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     }),
     Object.freeze({
       id:'hub-sudeste',x:312,z:-210,radius:12,surface:'terra',
-      roads:Object.freeze(['ramal-rural-sudeste','entrada-fazenda-sudeste','conector-rural-sul-leste','ligacao-perimetral-sudeste'])
+      roads:Object.freeze(['ramal-rural-sudeste','entrada-fazenda-sudeste','conector-rural-sul-leste','ligacao-perimetral-sudeste','anel-perimetral'])
     }),
     Object.freeze({
       id:'hub-sul',x:35,z:-290,radius:12,surface:'terra',
@@ -492,11 +492,11 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     }),
     Object.freeze({
       id:'hub-oeste',x:-292,z:-150,radius:12,surface:'terra',
-      roads:Object.freeze(['estrada-rural-oeste','entrada-fazenda-oeste','conector-rural-sul-oeste','ligacao-perimetral-oeste'])
+      roads:Object.freeze(['estrada-rural-oeste','entrada-fazenda-oeste','conector-rural-sul-oeste','ligacao-perimetral-oeste','anel-perimetral'])
     }),
     Object.freeze({
       id:'hub-noroeste',x:-275,z:245,radius:10,surface:'terra',
-      roads:Object.freeze(['estrada-rural-noroeste','entrada-fazenda-noroeste','ligacao-perimetral-noroeste'])
+      roads:Object.freeze(['estrada-rural-noroeste','entrada-fazenda-noroeste','ligacao-perimetral-noroeste','anel-perimetral'])
     })
   ]);
 

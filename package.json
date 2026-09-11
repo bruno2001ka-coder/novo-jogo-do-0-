@@ -1,10 +1,10 @@
 {
   "name": "quintal-3d-clean",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check src/main.js && node --check src/Rodas.js && node scripts/review-10x.mjs",
+    "check": "node --check src/main.js && node --check src/Rodas.js && node --check src/TestTrack.js && node --check src/Profiler.js && node scripts/review-10x.mjs",
     "test": "node scripts/review-10x.mjs"
   }
 }

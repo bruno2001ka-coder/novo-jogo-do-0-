@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>Quintal 3D — Base Limpa</title>
+<title>Quintal 3D — Campo de Provas</title>
 <meta name="theme-color" content="#111811">
-<meta name="description" content="Base 3D limpa com personagem, moto, carro e mapa plano.">
+<meta name="description" content="Base técnica 3D com personagem, moto, carro, pista de testes e profiler de performance.">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icon.svg" type="image/svg+xml">
 <script type="importmap">
@@ -30,9 +30,9 @@ body.driving #jumpBtn{display:none}
 </style>
 </head>
 <body>
-<div id="start"><div class="card"><h1>QUINTAL 3D</h1><p>Base limpa reconstruída do zero. Só personagem, moto, carro e chão plano.</p><button id="playBtn">JOGAR</button><p style="font-size:12px">PC: WASD · mouse · Espaço · M moto · V carro · E veículo mais próximo · R reset</p></div></div>
+<div id="start"><div class="card"><h1>QUINTAL 3D</h1><p>Campo de provas técnico: personagem, moto e carro em validação antes de construir o mundo.</p><button id="playBtn">JOGAR</button><p style="font-size:12px">PC: WASD · mouse · Espaço · M moto · V carro · E veículo mais próximo · R reset</p></div></div>
 <div id="hud">FPS <b id="fps">0</b><br>Modo <b id="mode">A PÉ</b><br>Velocidade <b id="speed">0</b> km/h<br><span id="modelStatus">carregando modelos…</span></div>
-<div id="help">WASD andar/dirigir · M moto · V carro · E entrar/sair · R reset</div>
+<div id="help">WASD andar/dirigir · M moto · V carro · E entrar/sair · R reset · debug: ?debug=1</div>
 <div id="touch">
   <div id="lookZone"></div>
   <div id="joyBase"><div id="joyKnob"></div></div>
@@ -40,7 +40,7 @@ body.driving #jumpBtn{display:none}
   <button class="action" id="carBtn">CARRO</button>
   <button class="action" id="jumpBtn">PULAR</button>
 </div>
-<script type="module" src="./src/main.js?v=2"></script>
+<script type="module" src="./src/main.js?v=3"></script>
 <script>
 if('serviceWorker' in navigator&&location.protocol.startsWith('http')){
   addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));

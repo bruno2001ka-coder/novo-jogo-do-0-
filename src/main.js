@@ -1,14 +1,18 @@
 import*as THREE from'three';
 import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
 import{separarRodas}from'./Rodas.js';
+import{criarCampoDeProvas}from'./TestTrack.js';
+import{criarProfiler}from'./Profiler.js';
 
 const $=id=>document.getElementById(id);
 const mobile=matchMedia('(pointer:coarse)').matches||innerWidth<900;
+const debug=new URLSearchParams(location.search).get('debug')==='1';
 if(mobile)document.documentElement.classList.add('mobile');
+if(debug)document.body.classList.add('debug');
 
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x9fc2da);
-scene.fog=new THREE.Fog(0x9fc2da,90,190);
+scene.fog=new THREE.Fog(0x9fc2da,95,205);
 
 const camera=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.1,260);
 const renderer=new THREE.WebGLRenderer({antialias:!mobile,powerPreference:'high-performance'});
@@ -21,21 +25,10 @@ renderer.shadowMap.enabled=false;
 document.body.prepend(renderer.domElement);
 
 scene.add(new THREE.HemisphereLight(0xddeeff,0x506044,2));
-const sun=new THREE.DirectionalLight(0xffffff,2);sun.position.set(35,55,20);scene.add(sun);
+const sun=new THREE.DirectionalLight(0xffffff,2);
+sun.position.set(35,55,20);scene.add(sun);
 
-const ground=new THREE.Mesh(
-  new THREE.PlaneGeometry(200,200,1,1),
-  new THREE.MeshStandardMaterial({color:0x667d50,roughness:1,metalness:0})
-);
-ground.rotation.x=-Math.PI/2;ground.position.y=0;scene.add(ground);
-const grid=new THREE.GridHelper(200,100,0x506246,0x596d4c);grid.position.y=.012;scene.add(grid);
-
-const WORLD=96;
-const clampWorld=p=>{
-  p.x=THREE.MathUtils.clamp(p.x,-WORLD,WORLD);
-  p.z=THREE.MathUtils.clamp(p.z,-WORLD,WORLD);
-  p.y=Math.max(0,p.y);
-};
+const track=criarCampoDeProvas(scene,{debug});
 
 const RAW='https://raw.githubusercontent.com/bruno2001ka-coder/cloude-jogo-/main/assets/';
 const URLS={
@@ -109,7 +102,9 @@ function normalize(obj,{height=null,length=null,modelYaw=-Math.PI/2}={}){
 
 const player=new THREE.Group(),bike=new THREE.Group(),car=new THREE.Group();
 scene.add(player,bike,car);
-player.position.set(0,0,3);bike.position.set(5,0,0);car.position.set(-7,0,0);
+player.position.set(0,track.groundHeight(0,3),3);
+bike.position.set(5,track.groundHeight(5,0),0);
+car.position.set(-7,track.groundHeight(-7,0),0);
 
 const character={
   model:null,mixer:null,actions:{},current:null,pilot:null,basePos:new THREE.Vector3(),
@@ -117,8 +112,14 @@ const character={
 };
 
 const vehicles={
-  moto:{obj:bike,speed:0,max:18,acc:15,brake:22,drag:4.2,steer:1.5,lean:.22,label:'MOTO',wheels:null},
-  car:{obj:car,speed:0,max:23,acc:11,brake:25,drag:3.2,steer:.82,lean:.06,label:'CARRO',wheels:null}
+  moto:{
+    obj:bike,speed:0,max:18,acc:15,brake:22,drag:4.2,steer:1.5,lean:.22,label:'MOTO',
+    wheels:null,radius:.44,halfLength:1.0,halfWidth:.27,maxStep:.30
+  },
+  car:{
+    obj:car,speed:0,max:23,acc:11,brake:25,drag:3.2,steer:.82,lean:.06,label:'CARRO',
+    wheels:null,radius:.92,halfLength:1.85,halfWidth:.78,maxStep:.24
+  }
 };
 
 function setCharacterAction(action,fade=.16){
@@ -218,6 +219,7 @@ addEventListener('mousemove',e=>{
   camPitch=THREE.MathUtils.clamp(camPitch-e.movementY*.0022,-.18,.75);
 });
 
+function activeTarget(){return mode==='foot'?player:vehicles[mode].obj}
 function vehicleDistance(v){return player.position.distanceTo(v.obj.position)}
 
 function restoreCharacterTransform(){
@@ -229,8 +231,9 @@ function restoreCharacterTransform(){
 function exitVehicle(){
   if(mode==='foot')return;
   const v=vehicles[mode];
-  const side=new THREE.Vector3(1.6,0,0).applyAxisAngle(new THREE.Vector3(0,1,0),v.obj.rotation.y);
-  player.position.copy(v.obj.position).add(side);player.position.y=0;
+  const side=new THREE.Vector3(1.7,0,0).applyAxisAngle(new THREE.Vector3(0,1,0),v.obj.rotation.y);
+  player.position.copy(v.obj.position).add(side);
+  player.position.y=track.groundHeight(player.position.x,player.position.z);
   player.rotation.x=0;player.rotation.z=0;
   player.visible=true;restoreCharacterTransform();
   mode='foot';document.body.classList.remove('driving');
@@ -243,7 +246,8 @@ function toggleVehicle(name){
   mode=name;document.body.classList.add('driving');
   player.visible=name==='moto';
   if(name==='moto'){
-    player.position.copy(v.obj.position);player.rotation.y=v.obj.rotation.y;
+    player.position.copy(v.obj.position);
+    player.rotation.copy(v.obj.rotation);
   }
 }
 
@@ -254,12 +258,21 @@ function toggleNearest(){
   toggleVehicle(dm<dc?'moto':'car');
 }
 
+function resetWheels(v){
+  if(!v.wheels)return;
+  for(const r of v.wheels){
+    r.angulo=0;r.malha.rotation[r.eixoGiro]=0;
+    if(r.dianteira)r.pivo.rotation.y=0;
+  }
+}
+
 function reset(){
-  if(mode==='foot'){player.position.set(0,0,3);velY=0}
-  else{
-    const v=vehicles[mode];
-    v.obj.position.set(mode==='moto'?5:-7,0,0);v.obj.rotation.set(0,0,0);v.speed=0;
-    if(v.wheels)for(const r of v.wheels){r.angulo=0;r.malha.rotation[r.eixoGiro]=0;if(r.dianteira)r.pivo.rotation.y=0}
+  if(mode==='foot'){
+    player.position.set(0,track.groundHeight(0,3),3);player.rotation.set(0,0,0);velY=0;
+  }else{
+    const v=vehicles[mode],x=mode==='moto'?5:-7;
+    v.obj.position.set(x,track.groundHeight(x,0),0);
+    v.obj.rotation.set(0,0,0);v.speed=0;resetWheels(v);
   }
 }
 
@@ -305,7 +318,6 @@ function updateCharacterAnimation(dt,{moving=false,running=false,speed=0,pilot=f
     if(character.current){character.current.paused=true;character.current.time=0}
   }else if(character.current){
     character.current.paused=false;
-    // Valores medidos no jogo antigo, corrigidos para o personagem de 1,75 m desta base.
     const natural=running?4.53:1.21;
     character.current.timeScale=THREE.MathUtils.clamp(speed/natural,.55,4.2);
   }
@@ -317,6 +329,9 @@ function walk(dt){
   const iz=(keys.KeyW?1:0)-(keys.KeyS?1:0)-joy.y;
   const len=Math.hypot(ix,iz);
   let moving=false,running=false,speed=0;
+  const floorBefore=track.groundHeight(player.position.x,player.position.z);
+  const grounded=player.position.y<=floorBefore+.03&&velY<=.05;
+
   if(len>.08){
     moving=true;
     const nx=ix/Math.max(1,len),nz=iz/Math.max(1,len);
@@ -325,14 +340,16 @@ function walk(dt){
     const f=new THREE.Vector3(-Math.sin(camYaw),0,-Math.cos(camYaw));
     const r=new THREE.Vector3(Math.cos(camYaw),0,-Math.sin(camYaw));
     const move=f.multiplyScalar(nz).add(r.multiplyScalar(nx)).normalize();
-    player.position.addScaledVector(move,speed*dt);
-    // O GLB do personagem olha para +Z; esta é a orientação correta do corpo no rumo real.
-    player.rotation.y=Math.atan2(move.x,move.z);
+    const step=track.moveXZ(player,move.x*speed*dt,move.z*speed*dt,.33,.31);
+    if(Math.hypot(step.x,step.z)>.0001)player.rotation.y=Math.atan2(move.x,move.z);
   }
-  if(jumpRequest&&player.position.y<=.001){velY=5.7}
+
+  if(jumpRequest&&grounded){velY=5.7}
   jumpRequest=false;velY-=15.5*dt;player.position.y+=velY*dt;
-  if(player.position.y<0){player.position.y=0;velY=0}
-  clampWorld(player.position);
+
+  const floor=track.groundHeight(player.position.x,player.position.z);
+  if(player.position.y<floor){player.position.y=floor;velY=0}
+
   return{moving,running,speed};
 }
 
@@ -345,10 +362,20 @@ function animateWheels(v,distance,steerVisual){
   }
 }
 
+function applyVehicleGroundPose(v,steer,dt){
+  const pose=track.terrainPose(
+    v.obj.position.x,v.obj.position.z,v.obj.rotation.y,v.halfLength,v.halfWidth
+  );
+  v.obj.position.y=pose.y;
+  v.obj.rotation.x=THREE.MathUtils.lerp(v.obj.rotation.x,pose.pitch,1-Math.exp(-12*dt));
+  const turnScale=THREE.MathUtils.clamp(Math.abs(v.speed)/Math.max(1,v.max),0,1);
+  const lean=-steer*turnScale*v.lean;
+  v.obj.rotation.z=THREE.MathUtils.lerp(v.obj.rotation.z,pose.roll+lean,1-Math.exp(-10*dt));
+}
+
 function drive(dt,v,name){
   const throttle=(keys.KeyW?1:0)+(joy.y<-.25?Math.min(1,-joy.y):0);
   const reverse=(keys.KeyS?1:0)+(joy.y>.25?Math.min(1,joy.y):0);
-  // positivo = esquerda; negativo = direita.
   const steer=((keys.KeyA?1:0)-(keys.KeyD?1:0))-joy.x;
 
   if(throttle>0)v.speed+=v.acc*throttle*dt;
@@ -359,28 +386,27 @@ function drive(dt,v,name){
   const turnScale=THREE.MathUtils.clamp(Math.abs(v.speed)/3,.18,1);
   if(Math.abs(v.speed)>.04)v.obj.rotation.y+=steer*v.steer*turnScale*dt*Math.sign(v.speed);
 
-  const distance=v.speed*dt;
+  const requested=v.speed*dt;
   const f=new THREE.Vector3(-Math.sin(v.obj.rotation.y),0,-Math.cos(v.obj.rotation.y));
-  v.obj.position.addScaledVector(f,distance);v.obj.position.y=0;clampWorld(v.obj.position);
+  const ox=v.obj.position.x,oz=v.obj.position.z;
+  const move=track.moveXZ(v.obj,f.x*requested,f.z*requested,v.radius,v.maxStep);
+  const actual=(v.obj.position.x-ox)*f.x+(v.obj.position.z-oz)*f.z;
 
-  // Mesma lógica do projeto antigo: distância/raio e só as rodas dianteiras esterçam.
-  animateWheels(v,distance,steer*.56);
+  if(Math.abs(requested)>.001&&Math.abs(actual)<Math.abs(requested)*.35)v.speed*=.15;
 
-  // Moto deita mais; carro apenas transfere levemente o peso.
-  const leanTarget=-steer*turnScale*v.lean;
-  v.obj.rotation.z=THREE.MathUtils.lerp(v.obj.rotation.z,leanTarget,1-Math.exp(-9*dt));
+  animateWheels(v,actual,steer*.56);
+  applyVehicleGroundPose(v,steer,dt);
 
   if(name==='moto'){
     player.visible=true;
     player.position.copy(v.obj.position);
-    player.rotation.y=v.obj.rotation.y;
-    player.rotation.z=v.obj.rotation.z;
+    player.rotation.copy(v.obj.rotation);
     updateCharacterAnimation(dt,{pilot:true});
   }
 }
 
 function updateCamera(dt){
-  const target=mode==='foot'?player.position:vehicles[mode].obj.position;
+  const target=activeTarget().position;
   const h=mode==='foot'?1.25:1.05,dist=mode==='foot'?5.2:7.5;
   const cp=Math.cos(camPitch),sp=Math.sin(camPitch);
   const desired=new THREE.Vector3(
@@ -427,11 +453,25 @@ $('playBtn').addEventListener('click',()=>{
   if(!mobile)renderer.domElement.requestPointerLock?.();
 });
 
+const profiler=criarProfiler(renderer,{
+  enabled:debug,
+  getContext:()=>{
+    const t=activeTarget().position;
+    return{
+      mode:mode==='foot'?'A PÉ':vehicles[mode].label,
+      zone:track.zoneAt(t.x,t.z),x:t.x,z:t.z
+    };
+  }
+});
+
 let last=performance.now(),fpsFrames=0,fpsTime=0;
 function frame(now){
   requestAnimationFrame(frame);
   const dt=Math.min((now-last)/1000,.033);last=now;
-  if(!$('start').classList.contains('hide')){renderer.render(scene,camera);return}
+
+  if(!$('start').classList.contains('hide')){
+    renderer.render(scene,camera);profiler.frame(dt);return;
+  }
 
   if(mode==='foot'){
     const state=walk(dt);
@@ -441,7 +481,8 @@ function frame(now){
   }
 
   updateCamera(dt);
-  renderer.render(scene,camera);
+  renderer.render(scene,camer);
+  profiler.frame(dt);
 
   fpsFrames++;fpsTime+=dt;
   if(fpsTime>=.5){

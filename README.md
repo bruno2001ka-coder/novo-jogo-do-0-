@@ -1,22 +1,23 @@
-# Quintal 3D — Base Limpa
+# Quintal 3D — Base Técnica
 
-Recomeço do projeto do zero.
+Recomeço do projeto com uma fundação pequena e mensurável.
 
-## O que existe
-- personagem;
-- moto;
-- carro;
-- mapa 200 x 200 totalmente plano;
-- câmera em terceira pessoa;
-- controles de PC e celular;
-- entrar/sair dos veículos;
-- HUD mínimo de FPS/modo/velocidade;
-- PWA e deploy para GitHub Pages.
+## Fase 1 — Campo de provas
+- personagem com andar, correr, pulo e animações;
+- moto e carro com rodas girando e esterço visual;
+- pista técnica com reta, slalom, lombada, rampa/plataforma, calçada, degraus, parede de impacto e garagem;
+- colisão AABB simples com slide;
+- veículos acompanham altura, arfagem e rolagem da pista;
+- profiler interno de FPS, frame time, p95, draw calls, triângulos, geometrias e texturas;
+- profiler aparece somente com `?debug=1`;
+- controles para PC e celular;
+- PWA;
+- deploy automático pelo Netlify.
 
 ## O que NÃO existe
-Favela, polícia, helicóptero, NPCs, fazenda, cultivo, armas, relevo, NavMesh, economia ou sistemas legados.
+Favela, polícia, helicóptero, NPCs, fazenda, cultivo, armas, economia, cidade ou sistemas legados.
 
-Os três GLBs são carregados diretamente do repositório antigo apenas como fonte de modelos. Se a rede/modelo falhar, há fallbacks procedurais e o jogo continua iniciando.
+Os GLBs de personagem, moto, carro e animação de pilotagem ainda são carregados do repositório antigo apenas como fonte de assets. Se um modelo falhar, há fallbacks procedurais para a inicialização continuar.
 
 ## Controles
 - WASD: andar/dirigir
@@ -26,7 +27,7 @@ Os três GLBs são carregados diretamente do repositório antigo apenas como fon
 - V: carro
 - E: veículo mais próximo / sair
 - R: reset
-- Mouse ou arraste no lado direito: câmera
+- Mouse ou arraste do lado direito: câmera
 
-
-Deploy: GitHub Pages automático via Actions.
+## Diagnóstico
+Abra com `?debug=1` para ver o profiler técnico e a grade de referência.

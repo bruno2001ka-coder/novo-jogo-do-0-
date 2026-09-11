@@ -481,7 +481,7 @@ function frame(now){
   }
 
   updateCamera(dt);
-  renderer.render(scene,camer);
+  renderer.render(scene,camera);
   profiler.frame(dt);
 
   fpsFrames++;fpsTime+=dt;

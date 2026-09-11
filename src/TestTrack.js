@@ -1,6 +1,6 @@
 import*as THREE from'three';
 
-const LIMIT=96;
+const LIMIT=260;
 const RAMP={x0:-3.2,x1:3.2,z0:-44,z1:-22,h:1.5};
 const BUMP={x0:-3.2,x1:3.2,z0:-12,z1:-8,h:.22};
 const SIDEWALK={x0:5,x1:9,z0:-14,z1:8,h:.16};
@@ -9,9 +9,14 @@ const STAIRS={x0:5,x1:9,z0:-24,z1:-14,step:.16};
 // Áreas físicas reservadas para construção. Elas ficam fora da pista de testes e
 // groundHeight() garante que permaneçam planas mesmo quando o terreno crescer.
 const FLAT_AREAS=Object.freeze([
+  // Casa continua exatamente onde já foi finalizada.
   Object.freeze({id:'casa',label:'ÁREA PLANA CASA',x0:-44,x1:-22,z0:24,z1:46,y:0}),
-  Object.freeze({id:'fazenda',label:'ÁREA PLANA FAZENDA',x0:22,x1:48,z0:24,z1:52,y:0}),
-  Object.freeze({id:'expansao',label:'ÁREA PLANA EXPANSÃO',x0:24,x1:50,z0:-52,z1:-26,y:0}),
+  // Fazenda distante da casa para o mapa ter percurso de verdade.
+  Object.freeze({id:'fazenda',label:'ÁREA PLANA FAZENDA',x0:130,x1:215,z0:55,z1:135,y:0}),
+  // Reserva ampla da futura cidade.
+  Object.freeze({id:'cidade',label:'ÁREA PLANA CIDADE',x0:48,x1:225,z0:155,z1:245,y:0}),
+  // Reserva genérica de expansão futura.
+  Object.freeze({id:'expansao',label:'ÁREA PLANA EXPANSÃO',x0:-215,x1:-125,z0:125,z1:215,y:0}),
 ]);
 
 function inRect(x,z,r){return x>=r.x0&&x<=r.x1&&z>=r.z0&&z<=r.z1}
@@ -96,15 +101,22 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     return true;
   }
 
-  const ground=new THREE.Mesh(new THREE.PlaneGeometry(200,200,1,1),groundMat);
+  const ground=new THREE.Mesh(new THREE.PlaneGeometry(520,520,1,1),groundMat);
   ground.rotation.x=-Math.PI/2;
   ground.position.y=0;
+  ground.name='chaoMundo520';
   group.add(ground);
 
-  // Piso quadriculado original da base limpa: sempre visível, não apenas em ?debug=1.
+  // Mantém a grade central original como referência técnica.
   const baseGrid=new THREE.GridHelper(200,100,0x506246,0x596d4c);
   baseGrid.position.y=.012;
   group.add(baseGrid);
+
+  // Grade completa na mesma escala do outro jogo: 520 x 520 m.
+  const worldGrid=new THREE.GridHelper(520,260,0x455a45,0x4f654f);
+  worldGrid.position.y=.010;
+  worldGrid.name='gradeMundo520';
+  group.add(worldGrid);
 
   const road=new THREE.Mesh(new THREE.BoxGeometry(20,.06,112),roadMat);
   road.position.set(0,.03,-30);
@@ -211,7 +223,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     );
   }
 
-  function pathBand(points,offsetA,offsetB,material,name,y=.045,segments=44){
+  function pathBand(points,offsetA,offsetB,material,name,y=.045,segments=112){
     const curve=curveFromXZ(points);
     const positions=[];
     const indices=[];
@@ -313,52 +325,56 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   }
 
   // Dados persistentes de topologia para uso futuro por tráfego/IA.
+  // Agora ocupa o mundo de 520 x 520 m, sem amontoar os destinos.
   const roadNetwork=Object.freeze([
     Object.freeze({
       id:'principal-s',
       type:'asfalto',
-      width:8.0,
+      width:9.0,
       sidewalks:true,
       connects:['pista-existente','cidade-futura'],
       points:Object.freeze([
         Object.freeze([0,18]),
-        Object.freeze([1.5,25]),
-        Object.freeze([6.5,31.5]),
-        Object.freeze([4.0,38.0]),
-        Object.freeze([-2.8,44.0]),
-        Object.freeze([-1.0,51.0]),
-        Object.freeze([5.7,58.0]),
-        Object.freeze([10.0,65.0]),
-        Object.freeze([12.0,74.0])
+        Object.freeze([7,36]),
+        Object.freeze([18,55]),
+        Object.freeze([28,76]),
+        Object.freeze([18,99]),
+        Object.freeze([-2,116]),
+        Object.freeze([4,140]),
+        Object.freeze([28,160]),
+        Object.freeze([56,178]),
+        Object.freeze([72,196]),
+        Object.freeze([88,214])
       ])
     }),
     Object.freeze({
       id:'acesso-casa',
       type:'asfalto',
-      width:6.5,
+      width:6.8,
       sidewalks:true,
       connects:['casa','principal-s'],
       points:Object.freeze([
         Object.freeze([-21.7,26.4]),
-        Object.freeze([-16.0,26.7]),
-        Object.freeze([-10.2,28.0]),
-        Object.freeze([-5.0,30.8]),
-        Object.freeze([1.8,34.5])
+        Object.freeze([-15,28]),
+        Object.freeze([-8,34]),
+        Object.freeze([1,43]),
+        Object.freeze([18,55])
       ])
     }),
     Object.freeze({
       id:'acesso-fazenda',
       type:'cascalho',
-      width:6.8,
+      width:7.2,
       sidewalks:true,
       connects:['principal-s','fazenda'],
       points:Object.freeze([
-        Object.freeze([-1.8,46.0]),
-        Object.freeze([5.0,46.7]),
-        Object.freeze([11.5,44.4]),
-        Object.freeze([17.8,40.5]),
-        Object.freeze([24.5,36.8]),
-        Object.freeze([30.0,35.0])
+        Object.freeze([-2,116]),
+        Object.freeze([24,113]),
+        Object.freeze([52,106]),
+        Object.freeze([82,98]),
+        Object.freeze([112,92]),
+        Object.freeze([142,91]),
+        Object.freeze([168,93])
       ])
     })
   ]);
@@ -370,7 +386,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     width:mainRoad.width,
     material:roadMat,
     sidewalk:true,
-    sidewalkWidth:1.20,
+    sidewalkWidth:1.35,
     line:true
   });
 
@@ -381,7 +397,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     width:houseRoad.width,
     material:roadMat,
     sidewalk:true,
-    sidewalkWidth:1.05,
+    sidewalkWidth:1.20,
     line:true
   });
 
@@ -392,16 +408,16 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     width:farmRoad.width,
     material:gravelMat,
     sidewalk:true,
-    sidewalkWidth:.95,
+    sidewalkWidth:1.05,
     line:false
   });
 
   // Cabeceira reservada para a futura cidade, sem construir bairro ainda.
   const cityReserve=new THREE.Mesh(
-    new THREE.CylinderGeometry(8.2,8.2,.045,28),
+    new THREE.CylinderGeometry(13.5,13.5,.045,36),
     roadMat
   );
-  cityReserve.position.set(12,.025,76.0);
+  cityReserve.position.set(88,.025,214.0);
   cityReserve.name='entroncamentoCidadeFutura';
   roadGroup.add(cityReserve);
 
@@ -1913,6 +1929,6 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   return{
     group,colliders,groundHeight,moveXZ,moveVehicle,zoneAt,
     terrainPose,twoWheelPose,cameraSafePosition,vehicleBlocked:blockedOBB,vehicleTurnAllowed,limit:LIMIT,
-    flatAreas:FLAT_AREAS,roadNetwork,terrainInfoAt,canPlaceRect,addBoxCollider,removeCollider,updateWorld
+    worldSize:LIMIT*2,flatAreas:FLAT_AREAS,roadNetwork,terrainInfoAt,canPlaceRect,addBoxCollider,removeCollider,updateWorld
   };
 }

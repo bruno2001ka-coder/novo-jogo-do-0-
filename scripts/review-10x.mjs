@@ -18,6 +18,6 @@ ok('6 terreno de teste afeta personagem e veículos',main.includes('track.ground
 ok('7 rodas continuam físicas visuais',main.includes('distance/Math.max(.05,r.raio')&&main.includes('if(r.dianteira)r.pivo.rotation.y=steerVisual'));
 ok('8 slalom usa instancing',track.includes('new THREE.InstancedMesh'));
 ok('9 render continua sem sombra/pós pesado',main.includes('renderer.shadowMap.enabled=false')&&!/EffectComposer|UnrealBloom|postprocessing/.test(main));
-ok('10 PC mobile PWA e debug por URL',main.includes('keys.KeyW')&&main.includes('bindJoystick()')&&main.includes("get('debug')==='1'")&&html.includes('lookZone')&&manifest.includes('"display":"fullscreen"'));
+ok('10 loop principal usa a câmera correta e mantém PC/mobile/PWA',main.includes('renderer.render(scene,camera);')&&!main.includes('renderer.render(scene,camer);')&&main.includes('keys.KeyW')&&main.includes('bindJoystick()')&&main.includes("get('debug')==='1'")&&html.includes('lookZone')&&manifest.includes('"display":"fullscreen"'));
 
 console.log(JSON.stringify({ok:true,total:checks.length,checks},null,2));

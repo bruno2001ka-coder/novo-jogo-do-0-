@@ -14,7 +14,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   group.name='campoDeProvas';
   scene.add(group);
 
-  const groundMat=mat(0x6f8656);
+  const groundMat=mat(0x667d50);
   const roadMat=mat(0x30343a,.92);
   const concreteMat=mat(0x9a9b93,.9);
   const rampMat=mat(0x5b5e62,.88);
@@ -24,6 +24,11 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   ground.rotation.x=-Math.PI/2;
   ground.position.y=0;
   group.add(ground);
+
+  // Piso quadriculado original da base limpa: sempre visível, não apenas em ?debug=1.
+  const baseGrid=new THREE.GridHelper(200,100,0x506246,0x596d4c);
+  baseGrid.position.y=.012;
+  group.add(baseGrid);
 
   const road=new THREE.Mesh(new THREE.BoxGeometry(20,.06,112),roadMat);
   road.position.set(0,.03,-30);
@@ -113,8 +118,8 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   cones.instanceMatrix.needsUpdate=true;group.add(cones);
 
   if(debug){
-    const grid=new THREE.GridHelper(200,100,0x4b5a43,0x56634d);
-    grid.position.y=.015;group.add(grid);
+    const axes=new THREE.AxesHelper(3);
+    axes.position.set(0,.03,22);group.add(axes);
   }
 
   function groundHeight(x,z){

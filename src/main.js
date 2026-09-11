@@ -473,10 +473,15 @@ function applyVehicleGroundPose(v,steerAngleValue,dt,name){
   v.obj.rotation.x=THREE.MathUtils.lerp(v.obj.rotation.x,pose.pitch,a);
 
   const speedRatio=THREE.MathUtils.clamp(Math.abs(v.speed)/Math.max(1,v.max),0,1);
-  const leanTarget=name==='moto'
+  // Carro não inclina artificialmente ao esterçar: o root fica apoiado no terreno.
+  // Na moto a inclinação permanece, mas levantamos o pivot o suficiente para a lateral não cortar o piso.
+  const turnLean=name==='moto'
     ?THREE.MathUtils.clamp(-steerAngleValue*speedRatio*1.15,-.46,.46)
-    :THREE.MathUtils.clamp(-steerAngleValue*speedRatio*v.lean,-.055,.055);
-  v.obj.rotation.z=THREE.MathUtils.lerp(v.obj.rotation.z,pose.roll+leanTarget,expAlpha(10,dt));
+    :0;
+  const rollTarget=pose.roll+turnLean;
+  const leanClearance=name==='moto'?Math.abs(Math.sin(turnLean))*v.halfWidth:0;
+  v.obj.position.y=pose.y+leanClearance;
+  v.obj.rotation.z=THREE.MathUtils.lerp(v.obj.rotation.z,rollTarget,expAlpha(10,dt));
   return pose;
 }
 

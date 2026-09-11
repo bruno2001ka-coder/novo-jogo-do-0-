@@ -39,6 +39,8 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   const mattressMat=mat(0xe7e0d4,.95);
   const counterMat=mat(0x756b61,.88);
   const metalMat=mat(0x9ba0a2,.72);
+  const yardConcreteMat=mat(0xa6a49d,.93);
+  const soilMat=mat(0x6b4b32,.98);
   const glassMat=new THREE.MeshStandardMaterial({
     color:0x263238,roughness:.28,metalness:.05,
     transparent:true,opacity:.72
@@ -993,6 +995,88 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
 
   entryPillar(LOT.z0+.42,'pilarEntradaCasaFrente');
   entryPillar(entryZ1,'pilarEntradaCasaFundo');
+
+  // ---------------------------------------------------------------------------
+  // QUINTAL RESIDENCIAL: quase todo concretado, com um pequeno canteiro de terra.
+  // ---------------------------------------------------------------------------
+  const yardSlab=new THREE.Mesh(
+    new THREE.BoxGeometry(
+      LOT.x1-LOT.x0-.56,
+      .035,
+      LOT.z1-LOT.z0-.56
+    ),
+    yardConcreteMat
+  );
+  yardSlab.position.set(
+    (LOT.x0+LOT.x1)/2,
+    .0175,
+    (LOT.z0+LOT.z1)/2
+  );
+  yardSlab.name='quintalConcretado';
+  houseGroup.add(yardSlab);
+
+  // Juntas de dilatação discretas para o concreto não parecer uma placa lisa infinita.
+  const jointMat=mat(0x77756f,.98);
+  for(const z of[29.6,35.0,40.4]){
+    const joint=new THREE.Mesh(
+      new THREE.BoxGeometry(LOT.x1-LOT.x0-.9,.008,.035),
+      jointMat
+    );
+    joint.position.set((LOT.x0+LOT.x1)/2,.039,z);
+    joint.name='juntaConcretoQuintal';
+    houseGroup.add(joint);
+  }
+  for(const x of[-38.5,-33.0,-27.5]){
+    const joint=new THREE.Mesh(
+      new THREE.BoxGeometry(.035,.008,LOT.z1-LOT.z0-.9),
+      jointMat
+    );
+    joint.position.set(x,.039,(LOT.z0+LOT.z1)/2);
+    joint.name='juntaConcretoQuintal';
+    houseGroup.add(joint);
+  }
+
+  // Pequeno espaço de terra no fundo direito do lote, fora da circulação dos veículos.
+  const DIRT_PATCH={
+    cx:-25.2,
+    cz:44.0,
+    w:4.1,
+    d:2.45
+  };
+
+  const soilBed=new THREE.Mesh(
+    new THREE.BoxGeometry(DIRT_PATCH.w,.09,DIRT_PATCH.d),
+    soilMat
+  );
+  soilBed.position.set(DIRT_PATCH.cx,.065,DIRT_PATCH.cz);
+  soilBed.name='canteiroTerraQuintal';
+  houseGroup.add(soilBed);
+
+  // Meio-fio baixo contornando o canteiro de terra.
+  const curbH=.12;
+  const curbT=.10;
+  const curbY=.06;
+
+  houseDetailBox(
+    DIRT_PATCH.w+.20,curbH,curbT,
+    DIRT_PATCH.cx,curbY,DIRT_PATCH.cz-DIRT_PATCH.d/2-.05,
+    trimMat,'bordaCanteiroFrente'
+  );
+  houseDetailBox(
+    DIRT_PATCH.w+.20,curbH,curbT,
+    DIRT_PATCH.cx,curbY,DIRT_PATCH.cz+DIRT_PATCH.d/2+.05,
+    trimMat,'bordaCanteiroFundo'
+  );
+  houseDetailBox(
+    curbT,curbH,DIRT_PATCH.d,
+    DIRT_PATCH.cx-DIRT_PATCH.w/2-.05,curbY,DIRT_PATCH.cz,
+    trimMat,'bordaCanteiroEsquerda'
+  );
+  houseDetailBox(
+    curbT,curbH,DIRT_PATCH.d,
+    DIRT_PATCH.cx+DIRT_PATCH.w/2+.05,curbY,DIRT_PATCH.cz,
+    trimMat,'bordaCanteiroDireita'
+  );
 
   // ---------------------------------------------------------------------------
   // ÁREA LATERAL / GARAGEM: cabe carro e moto sem bloquear a circulação.

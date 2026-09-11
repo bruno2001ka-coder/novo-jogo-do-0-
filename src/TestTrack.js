@@ -188,8 +188,8 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   cones.instanceMatrix.needsUpdate=true;group.add(cones);
 
   // ---------------------------------------------------------------------------
-  // PRIMEIRA ÁREA REAL DO MUNDO: CASA + ACESSO + PORTEIRA
-  // Visual rural detalhado; colisão estrutural continua simples e separada.
+  // PRIMEIRA ÁREA REAL DO MUNDO: CASA RESIDENCIAL + ACESSO + MUROS
+  // Casa finalizada como residência; física estrutural continua simples e separada.
   // ---------------------------------------------------------------------------
   const houseGroup=new THREE.Group();
   houseGroup.name='areaCasa';
@@ -212,9 +212,12 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     return mesh;
   }
 
-  // Acesso largo o suficiente para carro e moto, ligado ao final da pista.
-  const driveway=new THREE.Mesh(new THREE.BoxGeometry(32.4,.045,5),pathMat);
-  driveway.position.set(-26,.0225,25.5);
+  // Acesso residencial: liga a pista diretamente à entrada lateral aberta do lote.
+  const driveway=new THREE.Mesh(
+    new THREE.BoxGeometry(13.4,.045,4.8),
+    pathMat
+  );
+  driveway.position.set(-15.55,.0225,26.35);
   driveway.name='acessoCasa';
   houseGroup.add(driveway);
 
@@ -893,79 +896,204 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     for(const door of interiorDoors)door.update(dt,targetPosition);
   }
 
-  // PORTEIRA ORIGINAL PRESERVADA.
-  const GATE={x:-23.4,z0:23.0,width:5.0,height:1.45};
-  function gatePost(z){
-    const post=new THREE.Mesh(new THREE.BoxGeometry(.3,1.9,.3),woodMat);
-    post.position.set(GATE.x,.95,z);
-    houseGroup.add(post);
-    const collider=addBoxCollider({
-      cx:GATE.x,cz:z,w:.3,d:.3,h:1.9,
-      label:'poste-porteira',owner:'casa'
-    });
-    post.userData.colliderId=collider.id;
-  }
-  gatePost(GATE.z0-.2);
-  gatePost(GATE.z0+GATE.width+.2);
+  // ---------------------------------------------------------------------------
+  // FECHAMENTO RESIDENCIAL DO LOTE
+  // Sem porteira: entrada lateral aberta, própria para carro e moto.
+  // ---------------------------------------------------------------------------
+  const LOT={x0:-44,x1:-22,z0:24,z1:46};
+  const wallH=1.48;
+  const wallT=.24;
 
-  const gatePivot=new THREE.Group();
-  gatePivot.name='porteiraPivot';
-  gatePivot.position.set(GATE.x,0,GATE.z0);
-  houseGroup.add(gatePivot);
-
-  const gateLeaf=new THREE.Group();
-  gateLeaf.name='porteiraFolha';
-  gatePivot.add(gateLeaf);
-  for(const y of[.38,.78,1.18]){
-    const rail=new THREE.Mesh(new THREE.BoxGeometry(.12,.14,GATE.width),woodMat);
-    rail.position.set(0,y,GATE.width/2);
-    gateLeaf.add(rail);
-  }
-  for(const z of[.12,GATE.width-.12]){
-    const stile=new THREE.Mesh(new THREE.BoxGeometry(.14,1.35,.14),woodMat);
-    stile.position.set(0,.72,z);
-    gateLeaf.add(stile);
-  }
-
-  let gateCollider=addBoxCollider({
-    cx:GATE.x,cz:GATE.z0+GATE.width/2,
-    w:.22,d:GATE.width,h:GATE.height,
-    label:'porteira-fechada',owner:'casa'
-  });
-  const gateState={angle:0,target:0};
-
-  function updateGate(dt,targetPosition){
-    if(!targetPosition)return;
-    const gateCenterZ=GATE.z0+GATE.width/2;
-    const distance=Math.hypot(targetPosition.x-GATE.x,targetPosition.z-gateCenterZ);
-
-    if(distance<6.5)gateState.target=-Math.PI/2;
-    else if(distance>8.5)gateState.target=0;
-
-    if(gateState.target!==0&&gateCollider){
-      removeCollider(gateCollider);
-      gateCollider=null;
-    }
-
-    gateState.angle=THREE.MathUtils.lerp(
-      gateState.angle,
-      gateState.target,
-      1-Math.exp(-5.5*dt)
+  function residentialWall(cx,cz,w,d,label){
+    const body=new THREE.Mesh(
+      new THREE.BoxGeometry(w,wallH,d),
+      houseMat
     );
+    body.position.set(cx,wallH/2,cz);
+    body.name=label;
+    houseGroup.add(body);
 
-    if(Math.abs(gateState.angle-gateState.target)<.002){
-      gateState.angle=gateState.target;
-    }
-    gatePivot.rotation.y=gateState.angle;
+    const cap=new THREE.Mesh(
+      new THREE.BoxGeometry(w+.08,.08,d+.08),
+      trimMat
+    );
+    cap.position.set(cx,wallH+.04,cz);
+    cap.name=`${label}Capa`;
+    houseGroup.add(cap);
 
-    if(gateState.target===0&&Math.abs(gateState.angle)<.025&&!gateCollider){
-      gateCollider=addBoxCollider({
-        cx:GATE.x,cz:GATE.z0+GATE.width/2,
-        w:.22,d:GATE.width,h:GATE.height,
-        label:'porteira-fechada',owner:'casa'
+    const collider=addBoxCollider({
+      cx,cz,w,d,h:wallH,
+      label,owner:'casa-muro'
+    });
+    body.userData.colliderId=collider.id;
+    return body;
+  }
+
+  // Muro oeste, fundo e frente.
+  residentialWall(
+    LOT.x0+.16,
+    (LOT.z0+LOT.z1)/2,
+    wallT,
+    LOT.z1-LOT.z0-.32,
+    'muroCasaOeste'
+  );
+
+  residentialWall(
+    (LOT.x0+LOT.x1)/2,
+    LOT.z1-.16,
+    LOT.x1-LOT.x0-.32,
+    wallT,
+    'muroCasaFundo'
+  );
+
+  residentialWall(
+    (LOT.x0+LOT.x1)/2,
+    LOT.z0+.16,
+    LOT.x1-LOT.x0-.32,
+    wallT,
+    'muroCasaFrente'
+  );
+
+  // Muro leste começa depois da entrada para deixar uma passagem veicular ampla.
+  const entryZ1=29.35;
+  const eastWallStart=entryZ1;
+  const eastWallEnd=LOT.z1-.16;
+  residentialWall(
+    LOT.x1-.16,
+    (eastWallStart+eastWallEnd)/2,
+    wallT,
+    eastWallEnd-eastWallStart,
+    'muroCasaLeste'
+  );
+
+  // Dois pilares marcam a entrada residencial, mas o vão fica totalmente aberto.
+  function entryPillar(z,name){
+    const pillar=new THREE.Mesh(
+      new THREE.BoxGeometry(.42,1.78,.42),
+      houseMat
+    );
+    pillar.position.set(LOT.x1-.18,.89,z);
+    pillar.name=name;
+    houseGroup.add(pillar);
+
+    const cap=new THREE.Mesh(
+      new THREE.BoxGeometry(.54,.10,.54),
+      trimMat
+    );
+    cap.position.set(LOT.x1-.18,1.83,z);
+    cap.name=`${name}Capa`;
+    houseGroup.add(cap);
+
+    const collider=addBoxCollider({
+      cx:LOT.x1-.18,cz:z,w:.42,d:.42,h:1.78,
+      label:name,owner:'casa-muro'
+    });
+    pillar.userData.colliderId=collider.id;
+  }
+
+  entryPillar(LOT.z0+.42,'pilarEntradaCasaFrente');
+  entryPillar(entryZ1,'pilarEntradaCasaFundo');
+
+  // ---------------------------------------------------------------------------
+  // ÁREA LATERAL / GARAGEM: cabe carro e moto sem bloquear a circulação.
+  // ---------------------------------------------------------------------------
+  const PARKING={
+    cx:-25.30,
+    cz:34.05,
+    w:5.35,
+    d:16.10
+  };
+
+  const parkingPad=new THREE.Mesh(
+    new THREE.BoxGeometry(PARKING.w,.055,PARKING.d),
+    pathMat
+  );
+  parkingPad.position.set(PARKING.cx,.0275,PARKING.cz);
+  parkingPad.name='pisoGaragemLateral';
+  houseGroup.add(parkingPad);
+
+  // Faixa central de acesso: mantém o carro alinhado da entrada até a cobertura.
+  const parkingGuideMat=mat(0xb9b1a4,.90);
+  for(const x of[PARKING.cx-PARKING.w/2+.18,PARKING.cx+PARKING.w/2-.18]){
+    const guide=new THREE.Mesh(
+      new THREE.BoxGeometry(.07,.012,PARKING.d-.40),
+      parkingGuideMat
+    );
+    guide.position.set(x,.062,PARKING.cz);
+    guide.name='guiaGaragemLateral';
+    houseGroup.add(guide);
+  }
+
+  // Cobertura lateral: largura suficiente para carro e espaço de moto ao lado.
+  const CARPORT={
+    cx:PARKING.cx,
+    cz:36.60,
+    w:5.05,
+    d:8.10,
+    h:2.55
+  };
+
+  const carportRoof=new THREE.Mesh(
+    new THREE.BoxGeometry(CARPORT.w,.16,CARPORT.d),
+    roofMat
+  );
+  carportRoof.position.set(
+    CARPORT.cx,
+    CARPORT.h,
+    CARPORT.cz
+  );
+  carportRoof.rotation.z=THREE.MathUtils.degToRad(-4);
+  carportRoof.name='coberturaGaragemLateral';
+  houseGroup.add(carportRoof);
+
+  // Viga de acabamento frontal da garagem.
+  houseDetailBox(
+    CARPORT.w+.08,.16,.16,
+    CARPORT.cx,CARPORT.h-.16,CARPORT.cz-CARPORT.d/2+.10,
+    woodMat,'vigaGaragemLateral'
+  );
+
+  // Quatro pilares nas bordas: vão central permanece livre para o carro.
+  const carportPostXs=[
+    CARPORT.cx-CARPORT.w/2+.18,
+    CARPORT.cx+CARPORT.w/2-.18
+  ];
+  const carportPostZs=[
+    CARPORT.cz-CARPORT.d/2+.18,
+    CARPORT.cz+CARPORT.d/2-.18
+  ];
+
+  for(const x of carportPostXs){
+    for(const z of carportPostZs){
+      const post=houseDetailBox(
+        .18,CARPORT.h-.18,.18,
+        x,(CARPORT.h-.18)/2,z,
+        woodMat,'pilarGaragemLateral'
+      );
+      const collider=addBoxCollider({
+        cx:x,cz:z,w:.20,d:.20,h:CARPORT.h-.18,
+        label:'pilar-garagem-lateral',owner:'casa-garagem'
       });
+      post.userData.colliderId=collider.id;
     }
   }
+
+  // Marcações visuais discretas: vaga do carro e faixa reservada para a moto.
+  const lineMat=mat(0xd5d0c5,.82);
+  function parkingLine(w,d,x,z,name){
+    const line=new THREE.Mesh(
+      new THREE.BoxGeometry(w,.018,d),
+      lineMat
+    );
+    line.position.set(x,.072,z);
+    line.name=name;
+    houseGroup.add(line);
+  }
+
+  parkingLine(.055,5.15,PARKING.cx-1.65,36.65,'vagaCarroLinhaE');
+  parkingLine(.055,5.15,PARKING.cx+.55,36.65,'vagaCarroLinhaD');
+  parkingLine(1.20,.055,PARKING.cx+1.62,34.15,'vagaMotoLinhaFrente');
+  parkingLine(1.20,.055,PARKING.cx+1.62,38.45,'vagaMotoLinhaFundo');
 
   if(debug){
     const axes=new THREE.AxesHelper(3);
@@ -1250,7 +1378,6 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   }
 
   function updateWorld(dt,targetPosition){
-    updateGate(dt,targetPosition);
     updateDoor(dt,targetPosition);
     updateInteriorDoors(dt,targetPosition);
   }

@@ -658,34 +658,73 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   const streetDetailGroup=new THREE.Group();
   streetDetailGroup.name='detalhesRua';
   roadGroup.add(streetDetailGroup);
-  const poleMat=mat(0x3f4647,.75),lampMat=mat(0xf4e6b0,.35);
-  const treeTrunkMat=mat(0x654832,.98),treeLeafMat=mat(0x2f6338,.96);
+  const poleMat=mat(0x343b3d,.72);
+  const armMat=mat(0x4b5152,.72);
+  const lampMat=new THREE.MeshStandardMaterial({color:0xffedb0,emissive:0xffc85a,emissiveIntensity:1.8,roughness:.25});
+  const treeTrunkMat=mat(0x5a3b28,.98);
+  const treeLeafMat=mat(0x2d5a34,.96);
+  const treeLeafLightMat=mat(0x3f7542,.96);
   const detailDummy=new THREE.Object3D();
-  const poleGeo=new THREE.CylinderGeometry(.055,.075,4.2,8),lampGeo=new THREE.SphereGeometry(.16,8,6);
-  const trunkGeo=new THREE.CylinderGeometry(.10,.14,1.2,7),leafGeo=new THREE.ConeGeometry(.75,1.8,8);
-  const poles=new THREE.InstancedMesh(poleGeo,poleMat,48),lamps=new THREE.InstancedMesh(lampGeo,lampMat,48);
-  const trees=new THREE.InstancedMesh(leafGeo,treeLeafMat,70),trunks=new THREE.InstancedMesh(trunkGeo,treeTrunkMat,70);
-  let poleCount=0,treeCount=0;
+
+  // Postes urbanos com haste, braco e luminaria; a luminaria aponta para a pista.
+  const poles=new THREE.Group();
+  const poleGeo=new THREE.CylinderGeometry(.065,.095,4.6,10);
+  const armGeo=new THREE.BoxGeometry(1.15,.07,.07);
+  const lampGeo=new THREE.SphereGeometry(.16,10,8);
+  const polePts=[];
   for(const road of roadNetwork){
+    if(road.type!=='asfalto')continue;
     const curve=curveFromXZ(road.points,road.closed),pts=sampleRoad(road);
-    if(road.type==='asfalto'&&poleCount<48){
-      for(let i=8;i<pts.length-4&&poleCount<48;i+=Math.max(8,Math.floor(pts.length/18))){
-        const p=pts[i],t=curve.getTangent(i/(pts.length-1)).normalize(),side=i%2?-1:1,nx=t.z*side,nz=-t.x*side;
-        detailDummy.position.set(p.x+nx*6.2,2.1,p.z+nz*6.2);detailDummy.scale.set(1,1,1);detailDummy.updateMatrix();poles.setMatrixAt(poleCount,detailDummy.matrix);
-        detailDummy.position.y=4.25;detailDummy.updateMatrix();lamps.setMatrixAt(poleCount,detailDummy.matrix);poleCount++;
-      }
-    }
-    if(treeCount<70){
-      for(let i=5;i<pts.length-2&&treeCount<70;i+=Math.max(12,Math.floor(pts.length/10))){
-        const p=pts[i],t=curve.getTangent(i/(pts.length-1)).normalize(),side=i%2?-1:1,nx=t.z*side,nz=-t.x*side,off=road.type==='terra'?7.5:10.5;
-        detailDummy.position.set(p.x+nx*off,.6,p.z+nz*off);detailDummy.scale.setScalar(.8+(treeCount%3)*.12);detailDummy.updateMatrix();trunks.setMatrixAt(treeCount,detailDummy.matrix);
-        detailDummy.position.y=1.9;detailDummy.updateMatrix();trees.setMatrixAt(treeCount,detailDummy.matrix);treeCount++;
-      }
+    for(let i=8;i<pts.length-4&&polePts.length<48;i+=Math.max(8,Math.floor(pts.length/18))){
+      const p=pts[i],t=curve.getTangent(i/(pts.length-1)).normalize(),side=i%2?-1:1,nx=t.z*side,nz=-t.x*side;
+      polePts.push({x:p.x+nx*6.2,z:p.z+nz*6.2,side,nx,nz});
     }
   }
-  poles.count=poleCount;lamps.count=poleCount;trees.count=treeCount;trunks.count=treeCount;
-  poles.instanceMatrix.needsUpdate=true;lamps.instanceMatrix.needsUpdate=true;trees.instanceMatrix.needsUpdate=true;trunks.instanceMatrix.needsUpdate=true;
-  streetDetailGroup.add(poles,lamps,trees,trunks);
+  for(const p of polePts){
+    const post=new THREE.Mesh(poleGeo,poleMat);
+    post.position.set(p.x,2.3,p.z);
+    poles.add(post);
+    const arm=new THREE.Mesh(armGeo,armMat);
+    arm.position.set(p.x-p.nx*.48,4.48,p.z-p.nz*.48);
+    arm.rotation.y=Math.atan2(p.nz,p.nx);
+    poles.add(arm);
+    const lamp=new THREE.Mesh(lampGeo,lampMat);
+    lamp.position.set(p.x-p.nx*.98,4.38,p.z-p.nz*.98);
+    lamp.scale.set(1.35,.55,1.35);
+    poles.add(lamp);
+  }
+  streetDetailGroup.add(poles);
+
+  // Arvores em camadas, com tronco exposto e variacoes naturais de copa.
+  const trees=new THREE.Group();
+  const trunkGeo=new THREE.CylinderGeometry(.11,.17,1.45,8);
+  const crownGeo=new THREE.SphereGeometry(1,12,8);
+  let treeCount=0;
+  for(const road of roadNetwork){
+    const curve=curveFromXZ(road.points,road.closed),pts=sampleRoad(road);
+    for(let i=5;i<pts.length-2&&treeCount<70;i+=Math.max(12,Math.floor(pts.length/10))){
+      const p=pts[i],t=curve.getTangent(i/(pts.length-1)).normalize(),side=i%2?-1:1,nx=t.z*side,nz=-t.x*side;
+      const off=road.type==='terra'?7.5:10.5;
+      const scale=.78+(treeCount%4)*.12;
+      const tree=new THREE.Group();
+      const trunk=new THREE.Mesh(trunkGeo,treeTrunkMat);
+      trunk.position.set(p.x+nx*off,.72,p.z+nz*off);
+      trunk.scale.setScalar(scale);
+      tree.add(trunk);
+      const lower=new THREE.Mesh(crownGeo,treeCount%3===0?treeLeafLightMat:treeLeafMat);
+      lower.position.set(p.x+nx*off,1.65,p.z+nz*off);
+      lower.scale.set(.95*scale,1.15*scale,.95*scale);
+      tree.add(lower);
+      const upper=new THREE.Mesh(crownGeo,treeLeafMat);
+      upper.position.set(p.x+nx*off,2.35,p.z+nz*off);
+      upper.scale.set(.72*scale,.82*scale,.72*scale);
+      tree.add(upper);
+      trees.add(tree);
+      treeCount++;
+    }
+  }
+  streetDetailGroup.add(trees);
+
   const crosswalkMat=mat(0xf1eee2,.86);
   for(const j of ROAD_JUNCTIONS){
     if(j.surface!=='asfalto')continue;

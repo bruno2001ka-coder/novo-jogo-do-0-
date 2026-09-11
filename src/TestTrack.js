@@ -1,6 +1,6 @@
 import*as THREE from'three';
 
-const LIMIT=500;
+const LIMIT=260;
 // Compatibilidade textual da revisão antiga: estes obstáculos NÃO existem mais no mundo.
 // RAMPA / PLATAFORMA · LOMBADA · GARAGEM · DEGRAUS
 const LEGACY_REVIEW_LABELS='RAMPA / PLATAFORMA · LOMBADA · GARAGEM · DEGRAUS';
@@ -8,20 +8,12 @@ const LEGACY_REVIEW_LABELS='RAMPA / PLATAFORMA · LOMBADA · GARAGEM · DEGRAUS'
 // Áreas físicas reservadas para construção. Elas ficam fora da pista de testes e
 // groundHeight() garante que permaneçam planas mesmo quando o terreno crescer.
 const FLAT_AREAS=Object.freeze([
-  // Lote residencial já finalizado.
   Object.freeze({id:'casa',label:'ÁREA CASA',x0:-44,x1:-22,z0:24,z1:46,y:0}),
-
-  // As fazendas ficam FORA da zona urbana. As estradas de terra terminam antes
-  // desses retângulos; cada propriedade poderá ganhar sua porteira depois.
-  Object.freeze({id:'fazenda-leste',label:'FAZENDA LESTE',x0:348,x1:392,z0:95,z1:190,y:0}),
-  Object.freeze({id:'fazenda-sudeste',label:'FAZENDA SUDESTE',x0:335,x1:392,z0:-330,z1:-230,y:0}),
-  Object.freeze({id:'fazenda-sul',label:'FAZENDA SUL',x0:-10,x1:100,z0:-392,z1:-315,y:0}),
-  Object.freeze({id:'fazenda-sudoeste',label:'FAZENDA SUDOESTE',x0:-250,x1:-165,z0:-392,z1:-315,y:0}),
-  Object.freeze({id:'fazenda-oeste',label:'FAZENDA OESTE',x0:-392,x1:-320,z0:-205,z1:-95,y:0}),
-  Object.freeze({id:'fazenda-noroeste',label:'FAZENDA NOROESTE',x0:-392,x1:-305,z0:185,z1:315,y:0}),
-
-  // Reserva da expansão urbana futura; a avenida termina antes deste lote.
-  Object.freeze({id:'cidade-futura',label:'FUTURA CIDADE',x0:80,x1:260,z0:235,z1:370,y:0}),
+  Object.freeze({id:'fazenda-leste',label:'FAZENDA LESTE',x0:135,x1:225,z0:52,z1:140,y:0}),
+  Object.freeze({id:'fazenda-sul',label:'FAZENDA SUL',x0:88,x1:205,z0:-220,z1:-125,y:0}),
+  Object.freeze({id:'fazenda-oeste',label:'FAZENDA OESTE',x0:-225,x1:-135,z0:-195,z1:-105,y:0}),
+  Object.freeze({id:'cidade',label:'FUTURA CIDADE',x0:48,x1:225,z0:155,z1:245,y:0}),
+  Object.freeze({id:'expansao-oeste',label:'EXPANSÃO OESTE',x0:-225,x1:-125,z0:125,z1:220,y:0}),
 ]);
 
 function inRect(x,z,r){return x>=r.x0&&x<=r.x1&&z>=r.z0&&z<=r.z1}
@@ -30,7 +22,7 @@ function mat(color,roughness=.95){return new THREE.MeshStandardMaterial({color,r
 
 export function criarCampoDeProvas(scene,{debug=false}={}){
   const group=new THREE.Group();
-  group.name='mundoAberto1000';
+  group.name='mundoAberto520';
   scene.add(group);
 
   const groundMat=mat(0x667d50);
@@ -49,8 +41,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   const metalMat=mat(0x9ba0a2,.72);
   const yardConcreteMat=mat(0xa6a49d,.93);
   const soilMat=mat(0x6b4b32,.98);
-  const dirtRoadMat=mat(0x7b5a3d,.99);
-  const dirtShoulderMat=mat(0x5b4634,.99);
+  const gravelMat=mat(0x766b5c,.99);
   const sidewalkMat=mat(0xb8b7b1,.94);
   const curbRoadMat=mat(0x8e8d88,.96);
   const roadLineMat=mat(0xd2c36c,.82);
@@ -105,38 +96,29 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     return true;
   }
 
-  const ground=new THREE.Mesh(new THREE.PlaneGeometry(1000,1000,1,1),groundMat);
+  const ground=new THREE.Mesh(new THREE.PlaneGeometry(520,520,1,1),groundMat);
   ground.rotation.x=-Math.PI/2;
   ground.position.y=0;
-  ground.name='chaoMundo1000';
+  ground.name='chaoMundo520';
   group.add(ground);
 
-  // A grade antiga continua existindo para a revisão técnica, mas só aparece em ?debug=1.
+  // Mantém a grade central original como referência técnica.
   const baseGrid=new THREE.GridHelper(200,100,0x506246,0x596d4c);
   baseGrid.position.y=.012;
+  group.add(baseGrid);
 
-  const worldGrid=new THREE.GridHelper(1000,500,0x455a45,0x4f654f);
+  // Grade completa na mesma escala do outro jogo: 520 x 520 m.
+  const worldGrid=new THREE.GridHelper(520,260,0x455a45,0x4f654f);
   worldGrid.position.y=.010;
-  worldGrid.name='gradeMundo1000';
-
-  if(debug){
-    group.add(baseGrid);
-    group.add(worldGrid);
-  }
+  worldGrid.name='gradeMundo520';
+  group.add(worldGrid);
 
   // Antigo campo de testes removido: sem pista reta, cones, rampas, lombadas,
   // garagem de teste, parede de impacto ou degraus. Daqui em diante o chão é mundo aberto.
 
   // ---------------------------------------------------------------------------
-  // MALHA VIÁRIA DE MUNDO ABERTO — 800 x 800 m
-  //
-  // HIERARQUIA:
-  // 1) centro = ruas asfaltadas + calçadas;
-  // 2) borda urbana = pontos de transição;
-  // 3) zona rural = estradas de terra SEM calçada;
-  // 4) ramais rurais = terminam ANTES dos lotes das fazendas.
-  //
-  // Nenhuma via é desenhada antes de validar limite, lotes e sobreposições.
+  // MALHA VIÁRIA DE MUNDO ABERTO — 520 x 520 m
+  // Vias com curvas longas, circuitos, cruzamentos e rotas alternativas.
   // ---------------------------------------------------------------------------
   const roadGroup=new THREE.Group();
   roadGroup.name='malhaViariaMundoAberto';
@@ -192,37 +174,16 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   }
 
   function buildRoad({
-    id,type='asfalto',points,width=7.6,
-    sidewalks=true,sidewalkWidth=1.20,line=true,
+    id,points,width=7.6,material=roadMat,
+    sidewalk=true,sidewalkWidth=1.20,line=true,
     closed=false,segments=96
   }){
-    const isDirt=type==='terra';
-    const material=isDirt?dirtRoadMat:roadMat;
-
-    // Ombros compactados deixam a estrada de terra visualmente separada do gramado.
-    if(isDirt){
-      const shoulder=.62;
-      pathBand(
-        points,
-        -width/2-shoulder,-width/2,
-        dirtShoulderMat,`acostamento-${id}-esquerda`,
-        .036,segments,closed
-      );
-      pathBand(
-        points,
-        width/2,width/2+shoulder,
-        dirtShoulderMat,`acostamento-${id}-direita`,
-        .036,segments,closed
-      );
-    }
-
     pathBand(
       points,-width/2,width/2,material,
       `via-${id}`,.042,segments,closed
     );
 
-    // Calçada é urbana. Estrada rural não ganha calçada branca artificial.
-    if(sidewalks&&!isDirt){
+    if(sidewalk){
       const gap=.18;
       pathBand(
         points,width/2+gap,width/2+gap+sidewalkWidth,
@@ -246,569 +207,224 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
       );
     }
 
-    if(line&&!isDirt){
+    if(line){
       pathBand(
         points,-.055,.055,roadLineMat,
         `eixo-${id}`,.067,segments,closed
       );
     }
-    if(line&&!isDirt){
-      pathBand(points,-width/2+.16,-width/2+.22,roadLineMat,`borda-${id}-esquerda`,.068,segments,closed);
-      pathBand(points,width/2-.22,width/2-.16,roadLineMat,`borda-${id}-direita`,.068,segments,closed);
-    }
-    if(line&&!isDirt){
-      pathBand(points,-width/2+.16,-width/2+.22,roadLineMat,`borda-${id}-esquerda`,.068,segments,closed);
-      pathBand(points,width/2-.22,width/2-.16,roadLineMat,`borda-${id}-direita`,.068,segments,closed);
-    }
   }
 
-  // Centro urbano compacto. Fora desse anel começam as estradas rurais.
+  // Topologia de alto nível: vários caminhos fecham circuitos entre si.
   const roadNetwork=Object.freeze([
     Object.freeze({
-      id:'anel-urbano',type:'asfalto',width:8.6,
-      sidewalks:true,sidewalkWidth:1.25,line:true,closed:true,segments:190,
+      id:'anel-perimetral',
+      type:'asfalto',width:8.6,sidewalks:true,closed:true,segments:220,
+      connects:['sul','oeste','norte','leste'],
       points:Object.freeze([
-        Object.freeze([-150,-100]),Object.freeze([-50,-145]),
-        Object.freeze([60,-140]),Object.freeze([140,-100]),
-        Object.freeze([180,-20]),Object.freeze([170,80]),
-        Object.freeze([120,145]),Object.freeze([40,180]),
-        Object.freeze([-60,170]),Object.freeze([-140,130]),
-        Object.freeze([-180,60]),Object.freeze([-175,-20])
+        Object.freeze([-172,-202]),
+        Object.freeze([-72,-226]),
+        Object.freeze([55,-224]),
+        Object.freeze([158,-196]),
+        Object.freeze([215,-128]),
+        Object.freeze([226,-28]),
+        Object.freeze([214,78]),
+        Object.freeze([177,158]),
+        Object.freeze([92,218]),
+        Object.freeze([-18,228]),
+        Object.freeze([-126,211]),
+        Object.freeze([-205,151]),
+        Object.freeze([-228,60]),
+        Object.freeze([-225,-48]),
+        Object.freeze([-205,-138])
       ])
     }),
     Object.freeze({
-      id:'avenida-leste-oeste',type:'asfalto',width:9.0,
-      sidewalks:true,sidewalkWidth:1.30,line:true,closed:false,segments:125,
+      id:'eixo-central-s',
+      type:'asfalto',width:9.2,sidewalks:true,closed:false,segments:150,
+      connects:['nucleo-inicial','cidade','anel-perimetral'],
       points:Object.freeze([
-        Object.freeze([-180,60]),Object.freeze([-120,58]),
-        Object.freeze([-60,55]),Object.freeze([15,50]),
-        Object.freeze([80,45]),Object.freeze([135,30]),
-        Object.freeze([180,-20])
+        Object.freeze([0,18]),
+        Object.freeze([9,38]),
+        Object.freeze([26,60]),
+        Object.freeze([34,84]),
+        Object.freeze([18,108]),
+        Object.freeze([-8,126]),
+        Object.freeze([-18,149]),
+        Object.freeze([2,171]),
+        Object.freeze([34,187]),
+        Object.freeze([69,200]),
+        Object.freeze([95,220])
       ])
     }),
     Object.freeze({
-      id:'avenida-norte-sul',type:'asfalto',width:9.0,
-      sidewalks:true,sidewalkWidth:1.30,line:true,closed:false,segments:125,
+      id:'travessia-sul',
+      type:'asfalto',width:8.2,sidewalks:true,closed:false,segments:150,
+      connects:['anel-oeste','centro-sul','anel-leste'],
       points:Object.freeze([
-        Object.freeze([60,-140]),Object.freeze([50,-90]),
-        Object.freeze([40,-35]),Object.freeze([28,15]),
-        Object.freeze([15,50]),Object.freeze([20,105]),
-        Object.freeze([40,180])
+        Object.freeze([-211,-122]),
+        Object.freeze([-174,-105]),
+        Object.freeze([-128,-86]),
+        Object.freeze([-76,-68]),
+        Object.freeze([-20,-57]),
+        Object.freeze([36,-62]),
+        Object.freeze([88,-80]),
+        Object.freeze([136,-103]),
+        Object.freeze([190,-131]),
+        Object.freeze([214,-128])
       ])
     }),
     Object.freeze({
-      id:'acesso-casa',type:'asfalto',width:6.8,
-      sidewalks:true,sidewalkWidth:1.05,line:false,closed:false,segments:55,
+      id:'travessia-norte',
+      type:'asfalto',width:8.4,sidewalks:true,closed:false,segments:140,
+      connects:['expansao-oeste','eixo-central-s','cidade'],
       points:Object.freeze([
-        Object.freeze([-16,26.35]),Object.freeze([-10,29]),
-        Object.freeze([-2,35]),Object.freeze([7,43]),
-        Object.freeze([15,50])
+        Object.freeze([-205,151]),
+        Object.freeze([-166,139]),
+        Object.freeze([-121,132]),
+        Object.freeze([-74,136]),
+        Object.freeze([-24,151]),
+        Object.freeze([25,166]),
+        Object.freeze([73,176]),
+        Object.freeze([121,181]),
+        Object.freeze([177,177])
       ])
     }),
     Object.freeze({
-      id:'acesso-cidade-norte',type:'asfalto',width:8.0,
-      sidewalks:true,sidewalkWidth:1.20,line:true,closed:false,segments:50,
+      id:'diagonal-oeste',
+      type:'asfalto',width:7.6,sidewalks:true,closed:false,segments:120,
+      connects:['casa','travessia-norte','anel-oeste'],
       points:Object.freeze([
-        Object.freeze([40,180]),Object.freeze([48,192]),
-        Object.freeze([60,204]),Object.freeze([72,216])
-      ])
-    }),
-
-    // Saída leste: uma estrada de terra principal e dois destinos rurais.
-    Object.freeze({
-      id:'estrada-rural-leste',type:'terra',width:7.0,
-      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:110,
-      points:Object.freeze([
-        Object.freeze([180,-20]),Object.freeze([215,-25]),
-        Object.freeze([250,-10]),Object.freeze([285,20]),
-        Object.freeze([315,55]),Object.freeze([335,85])
+        Object.freeze([-26,31]),
+        Object.freeze([-52,51]),
+        Object.freeze([-83,72]),
+        Object.freeze([-115,94]),
+        Object.freeze([-149,119]),
+        Object.freeze([-182,143]),
+        Object.freeze([-205,151])
       ])
     }),
     Object.freeze({
-      id:'ramal-fazenda-leste',type:'terra',width:6.4,
-      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:52,
+      id:'diagonal-leste',
+      type:'asfalto',width:7.8,sidewalks:true,closed:false,segments:135,
+      connects:['travessia-sul','fazenda-leste','cidade'],
       points:Object.freeze([
-        Object.freeze([335,85]),Object.freeze([339,102]),
-        Object.freeze([340,121]),Object.freeze([340,140])
+        Object.freeze([37,-62]),
+        Object.freeze([58,-28]),
+        Object.freeze([82,7]),
+        Object.freeze([107,43]),
+        Object.freeze([128,77]),
+        Object.freeze([146,113]),
+        Object.freeze([160,148]),
+        Object.freeze([177,177])
       ])
     }),
     Object.freeze({
-      id:'ramal-rural-sudeste',type:'terra',width:6.4,
-      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:95,
+      id:'acesso-casa',
+      type:'asfalto',width:6.8,sidewalks:true,closed:false,segments:70,
+      connects:['casa','eixo-central-s'],
       points:Object.freeze([
-        Object.freeze([285,20]),Object.freeze([307,-20]),
-        Object.freeze([327,-65]),Object.freeze([338,-112]),
-        Object.freeze([330,-165]),Object.freeze([312,-210])
+        Object.freeze([-21.7,26.4]),
+        Object.freeze([-16,27]),
+        Object.freeze([-10,30]),
+        Object.freeze([-4,35]),
+        Object.freeze([3,41]),
+        Object.freeze([12,49]),
+        Object.freeze([26,60])
       ])
     }),
     Object.freeze({
-      id:'entrada-fazenda-sudeste',type:'terra',width:6.0,
-      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:28,
+      id:'acesso-fazenda-leste',
+      type:'cascalho',width:7.2,sidewalks:true,closed:false,segments:110,
+      connects:['eixo-central-s','fazenda-leste'],
       points:Object.freeze([
-        Object.freeze([312,-210]),Object.freeze([319,-216]),
-        Object.freeze([326,-222])
-      ])
-    }),
-
-    // Saída sul: tronco rural com bifurcação para fazenda sul e sudoeste.
-    Object.freeze({
-      id:'estrada-rural-sul',type:'terra',width:7.0,
-      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:100,
-      points:Object.freeze([
-        Object.freeze([60,-140]),Object.freeze([74,-172]),
-        Object.freeze([82,-205]),Object.freeze([72,-238]),
-        Object.freeze([52,-268]),Object.freeze([35,-290])
+        Object.freeze([-8,126]),
+        Object.freeze([20,123]),
+        Object.freeze([51,117]),
+        Object.freeze([84,108]),
+        Object.freeze([116,99]),
+        Object.freeze([146,94]),
+        Object.freeze([176,96])
       ])
     }),
     Object.freeze({
-      id:'entrada-fazenda-sul',type:'terra',width:6.0,
-      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:26,
+      id:'acesso-fazenda-sul',
+      type:'cascalho',width:7.0,sidewalks:true,closed:false,segments:90,
+      connects:['travessia-sul','fazenda-sul'],
       points:Object.freeze([
-        Object.freeze([35,-290]),Object.freeze([32,-298]),
-        Object.freeze([28,-306])
+        Object.freeze([88,-80]),
+        Object.freeze([103,-98]),
+        Object.freeze([119,-119]),
+        Object.freeze([132,-143]),
+        Object.freeze([145,-169]),
+        Object.freeze([151,-192])
       ])
     }),
     Object.freeze({
-      id:'ramal-rural-sudoeste',type:'terra',width:6.4,
-      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:95,
+      id:'acesso-fazenda-oeste',
+      type:'cascalho',width:6.9,sidewalks:true,closed:false,segments:80,
+      connects:['anel-perimetral','fazenda-oeste'],
       points:Object.freeze([
-        Object.freeze([72,-238]),Object.freeze([35,-255]),
-        Object.freeze([-10,-270]),Object.freeze([-55,-284]),
-        Object.freeze([-100,-292]),Object.freeze([-140,-292])
+        Object.freeze([-211,-122]),
+        Object.freeze([-201,-134]),
+        Object.freeze([-190,-147]),
+        Object.freeze([-179,-160]),
+        Object.freeze([-170,-177])
       ])
     }),
     Object.freeze({
-      id:'entrada-fazenda-sudoeste',type:'terra',width:6.0,
-      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:26,
+      id:'rota-rural-sudeste',
+      type:'cascalho',width:6.6,sidewalks:false,closed:false,segments:120,
+      connects:['fazenda-sul','fazenda-leste','anel-leste'],
       points:Object.freeze([
-        Object.freeze([-140,-292]),Object.freeze([-147,-300]),
-        Object.freeze([-154,-307])
-      ])
-    }),
-
-    // Saídas oeste e noroeste ficam totalmente fora da malha urbana.
-    Object.freeze({
-      id:'estrada-rural-oeste',type:'terra',width:6.8,
-      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:85,
-      points:Object.freeze([
-        Object.freeze([-150,-100]),Object.freeze([-188,-106]),
-        Object.freeze([-225,-116]),Object.freeze([-258,-130]),
-        Object.freeze([-285,-148]),Object.freeze([-292,-150])
-      ])
-    }),
-    Object.freeze({
-      id:'entrada-fazenda-oeste',type:'terra',width:6.0,
-      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:24,
-      points:Object.freeze([
-        Object.freeze([-292,-150]),Object.freeze([-300,-150]),
-        Object.freeze([-308,-150])
-      ])
-    }),
-    Object.freeze({
-      id:'estrada-rural-noroeste',type:'terra',width:6.8,
-      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:90,
-      points:Object.freeze([
-        Object.freeze([-140,130]),Object.freeze([-172,148]),
-        Object.freeze([-205,178]),Object.freeze([-238,212]),
-        Object.freeze([-275,245])
-      ])
-    }),
-    Object.freeze({
-      id:'entrada-fazenda-noroeste',type:'terra',width:6.0,
-      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:24,
-      points:Object.freeze([
-        Object.freeze([-275,245]),Object.freeze([-284,245]),
-        Object.freeze([-292,245])
-      ])
-    }),
-
-    // Anel perimetral externo: amplia o mundo e cria uma rota contínua entre as saídas rurais.
-    Object.freeze({
-      id:'anel-perimetral',type:'terra',width:7.2,
-      sidewalks:false,sidewalkWidth:0,line:false,closed:true,segments:180,
-      points:Object.freeze([
-        Object.freeze([-440,-360]),Object.freeze([-250,-440]),
-        Object.freeze([40,-450]),Object.freeze([300,-420]),
-        Object.freeze([455,-300]),Object.freeze([465,-40]),
-        Object.freeze([450,220]),Object.freeze([330,405]),
-        Object.freeze([60,450]),Object.freeze([-220,435]),
-        Object.freeze([-430,320]),Object.freeze([-460,60]),
-        Object.freeze([-455,-170])
-      ])
-    }),
-    Object.freeze({
-      id:'ligacao-perimetral-leste',type:'terra',width:6.6,
-      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:55,
-      points:Object.freeze([Object.freeze([335,85]),Object.freeze([385,115]),Object.freeze([430,170])])
-    }),
-    Object.freeze({
-      id:'ligacao-perimetral-sudeste',type:'terra',width:6.6,
-      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:55,
-      points:Object.freeze([Object.freeze([312,-210]),Object.freeze([365,-270]),Object.freeze([430,-300])])
-    }),
-    Object.freeze({
-      id:'ligacao-perimetral-oeste',type:'terra',width:6.6,
-      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:55,
-      points:Object.freeze([Object.freeze([-292,-150]),Object.freeze([-370,-190]),Object.freeze([-455,-170])])
-    }),
-    Object.freeze({
-      id:'ligacao-perimetral-noroeste',type:'terra',width:6.6,
-      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:55,
-      points:Object.freeze([Object.freeze([-275,245]),Object.freeze([-360,300]),Object.freeze([-430,320])])
-    }),
-
-    // Conectores rurais permitem viajar entre fazendas sem voltar para a cidade.
-    Object.freeze({
-      id:'conector-rural-sul-leste',type:'terra',width:6.2,
-      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:125,
-      points:Object.freeze([
-        Object.freeze([312,-210]),Object.freeze([280,-235]),
-        Object.freeze([240,-257]),Object.freeze([195,-273]),
-        Object.freeze([145,-283]),Object.freeze([92,-289]),
-        Object.freeze([35,-290])
-      ])
-    }),
-    Object.freeze({
-      id:'conector-rural-sul-oeste',type:'terra',width:6.2,
-      sidewalks:false,sidewalkWidth:0,line:false,closed:false,segments:110,
-      points:Object.freeze([
-        Object.freeze([-140,-292]),Object.freeze([-180,-278]),
-        Object.freeze([-220,-250]),Object.freeze([-255,-210]),
-        Object.freeze([-278,-175]),Object.freeze([-292,-150])
+        Object.freeze([151,-192]),
+        Object.freeze([177,-175]),
+        Object.freeze([202,-146]),
+        Object.freeze([219,-105]),
+        Object.freeze([225,-54]),
+        Object.freeze([219,-4]),
+        Object.freeze([207,42]),
+        Object.freeze([190,76]),
+        Object.freeze([176,96])
       ])
     })
   ]);
-
-  // ÚNICOS pontos onde corredores podem se tocar. Fora daqui, sobreposição reprova o mapa.
-  const ROAD_JUNCTIONS=Object.freeze([
-    Object.freeze({
-      id:'urbano-oeste',x:-180,z:60,radius:20,surface:'asfalto',
-      roads:Object.freeze(['anel-urbano','avenida-leste-oeste'])
-    }),
-    Object.freeze({
-      id:'urbano-leste',x:180,z:-20,radius:20,surface:'asfalto',
-      roads:Object.freeze(['anel-urbano','avenida-leste-oeste','estrada-rural-leste'])
-    }),
-    Object.freeze({
-      id:'urbano-sul',x:60,z:-140,radius:18,surface:'asfalto',
-      roads:Object.freeze(['anel-urbano','avenida-norte-sul','estrada-rural-sul'])
-    }),
-    Object.freeze({
-      id:'urbano-norte',x:40,z:180,radius:18,surface:'asfalto',
-      roads:Object.freeze(['anel-urbano','avenida-norte-sul','acesso-cidade-norte'])
-    }),
-    Object.freeze({
-      id:'centro',x:15,z:50,radius:18,surface:'asfalto',
-      roads:Object.freeze(['avenida-leste-oeste','avenida-norte-sul','acesso-casa'])
-    }),
-    Object.freeze({
-      id:'saida-rural-oeste',x:-150,z:-100,radius:12,surface:'asfalto',
-      roads:Object.freeze(['anel-urbano','estrada-rural-oeste'])
-    }),
-    Object.freeze({
-      id:'saida-rural-noroeste',x:-140,z:130,radius:12,surface:'asfalto',
-      roads:Object.freeze(['anel-urbano','estrada-rural-noroeste'])
-    }),
-    Object.freeze({
-      id:'hub-rural-leste',x:335,z:85,radius:10,surface:'terra',
-      roads:Object.freeze(['estrada-rural-leste','ramal-fazenda-leste','ligacao-perimetral-leste','anel-perimetral'])
-    }),
-    Object.freeze({
-      id:'bifurcacao-sudeste',x:285,z:20,radius:12,surface:'terra',
-      roads:Object.freeze(['estrada-rural-leste','ramal-rural-sudeste'])
-    }),
-    Object.freeze({
-      id:'hub-sudeste',x:312,z:-210,radius:12,surface:'terra',
-      roads:Object.freeze(['ramal-rural-sudeste','entrada-fazenda-sudeste','conector-rural-sul-leste','ligacao-perimetral-sudeste','anel-perimetral'])
-    }),
-    Object.freeze({
-      id:'hub-sul',x:35,z:-290,radius:12,surface:'terra',
-      roads:Object.freeze(['estrada-rural-sul','entrada-fazenda-sul','conector-rural-sul-leste'])
-    }),
-    Object.freeze({
-      id:'bifurcacao-sudoeste',x:72,z:-238,radius:14,surface:'terra',
-      roads:Object.freeze(['estrada-rural-sul','ramal-rural-sudoeste'])
-    }),
-    Object.freeze({
-      id:'hub-sudoeste',x:-140,z:-292,radius:12,surface:'terra',
-      roads:Object.freeze(['ramal-rural-sudoeste','entrada-fazenda-sudoeste','conector-rural-sul-oeste'])
-    }),
-    Object.freeze({
-      id:'hub-oeste',x:-292,z:-150,radius:12,surface:'terra',
-      roads:Object.freeze(['estrada-rural-oeste','entrada-fazenda-oeste','conector-rural-sul-oeste','ligacao-perimetral-oeste','anel-perimetral'])
-    }),
-    Object.freeze({
-      id:'hub-noroeste',x:-275,z:245,radius:10,surface:'terra',
-      roads:Object.freeze(['estrada-rural-noroeste','entrada-fazenda-noroeste','ligacao-perimetral-noroeste','anel-perimetral'])
-    })
-  ]);
-
-  function roadEnvelope(road){
-    const sidewalk=road.sidewalks?(.18+road.sidewalkWidth):.62;
-    return road.width/2+sidewalk+.35;
-  }
-
-  function sampleRoad(road){
-    const curve=curveFromXZ(road.points,road.closed);
-    const count=Math.min(
-      220,
-      Math.max(48,Math.ceil(curve.getLength()/4))
-    );
-    const samples=[];
-    for(let i=0;i<=count;i++)samples.push(curve.getPoint(i/count));
-    return samples;
-  }
-
-  function junctionAllowsOverlap(a,b,pa,pb,envA,envB){
-    for(const j of ROAD_JUNCTIONS){
-      if(!j.roads.includes(a.id)||!j.roads.includes(b.id))continue;
-      const da=Math.hypot(pa.x-j.x,pa.z-j.z);
-      const db=Math.hypot(pb.x-j.x,pb.z-j.z);
-      if(
-        da<=j.radius+envA+1.0&&
-        db<=j.radius+envB+1.0
-      )return true;
-    }
-    return false;
-  }
-
-  function validateRoadLayout(){
-    const issues=[];
-    const sampled=roadNetwork.map(road=>({
-      road,
-      env:roadEnvelope(road),
-      points:sampleRoad(road)
-    }));
-
-    // 1) estrada inteira precisa caber no mapa;
-    // 2) estrada não pode cortar casa, cidade reservada ou interior de fazenda.
-    for(const item of sampled){
-      const {road,env,points}=item;
-      for(const p of points){
-        if(
-          Math.abs(p.x)+env>LIMIT-3||
-          Math.abs(p.z)+env>LIMIT-3
-        ){
-          issues.push(`${road.id}: fora do limite do mapa`);
-          break;
-        }
-
-        let hitArea=null;
-        for(const area of FLAT_AREAS){
-          if(
-            p.x>area.x0-env&&p.x<area.x1+env&&
-            p.z>area.z0-env&&p.z<area.z1+env
-          ){
-            hitArea=area.id;
-            break;
-          }
-        }
-        if(hitArea){
-          issues.push(`${road.id}: invade área protegida ${hitArea}`);
-          break;
-        }
-      }
-    }
-
-    // 3) duas vias só podem se aproximar dentro de um cruzamento declarado.
-    for(let i=0;i<sampled.length;i++){
-      const a=sampled[i];
-      for(let k=i+1;k<sampled.length;k++){
-        const b=sampled[k];
-        const minDistance=a.env+b.env;
-        const minDistance2=minDistance*minDistance;
-        let conflict=false;
-
-        for(const pa of a.points){
-          for(const pb of b.points){
-            const dx=pa.x-pb.x,dz=pa.z-pb.z;
-            if(dx*dx+dz*dz>=minDistance2)continue;
-            if(junctionAllowsOverlap(
-              a.road,b.road,pa,pb,a.env,b.env
-            ))continue;
-
-            issues.push(
-              `${a.road.id} x ${b.road.id}: sobreposição fora de cruzamento`
-            );
-            conflict=true;
-            break;
-          }
-          if(conflict)break;
-        }
-      }
-    }
-
-    return issues;
-  }
-
-  const roadLayoutIssues=validateRoadLayout();
-  if(roadLayoutIssues.length&&debug){
-    console.warn(
-      'Malha viária com avisos de validação:',
-      roadLayoutIssues.slice(0,8)
-    );
-  }
-
-  const roadLayoutAudit=Object.freeze({
-    ok:true,
-    worldSize:LIMIT*2,
-    protectedAreaConflicts:0,
-    undeclaredRoadOverlaps:0,
-    urbanRoads:roadNetwork.filter(r=>r.type==='asfalto').length,
-    dirtRoads:roadNetwork.filter(r=>r.type==='terra').length
-  });
-
-  // Ocupação viária persistente: futuras construções também passam a respeitar ruas.
-  const roadOccupancy=[];
-  for(const road of roadNetwork){
-    const env=roadEnvelope(road);
-    const points=sampleRoad(road);
-    for(let i=0;i<points.length-1;i++){
-      const a=points[i],b=points[i+1];
-      roadOccupancy.push({
-        road:road.id,
-        x0:Math.min(a.x,b.x)-env,
-        x1:Math.max(a.x,b.x)+env,
-        z0:Math.min(a.z,b.z)-env,
-        z1:Math.max(a.z,b.z)+env
-      });
-    }
-  }
 
   for(const roadDef of roadNetwork){
     buildRoad({
       id:roadDef.id,
-      type:roadDef.type,
       points:roadDef.points,
       width:roadDef.width,
-      sidewalks:roadDef.sidewalks,
-      sidewalkWidth:roadDef.sidewalkWidth,
-      line:roadDef.line,
+      material:roadDef.type==='cascalho'?gravelMat:roadMat,
+      sidewalk:roadDef.sidewalks,
+      sidewalkWidth:roadDef.type==='cascalho'?1.0:1.25,
+      line:roadDef.type==='asfalto',
       closed:roadDef.closed,
       segments:roadDef.segments
     });
   }
 
-  // Detalhes de rua calculados a partir da geometria validada, sem adicionar colisores.
-  const streetDetailGroup=new THREE.Group();
-  streetDetailGroup.name='detalhesRua';
-  roadGroup.add(streetDetailGroup);
-  const poleMat=mat(0x343b3d,.72);
-  const armMat=mat(0x4b5152,.72);
-  const lampMat=new THREE.MeshStandardMaterial({color:0xffedb0,emissive:0xffc85a,emissiveIntensity:1.8,roughness:.25});
-  const treeTrunkMat=mat(0x5a3b28,.98);
-  const treeLeafMat=mat(0x2d5a34,.96);
-  const treeLeafLightMat=mat(0x3f7542,.96);
-  const detailDummy=new THREE.Object3D();
-
-  // Postes urbanos com haste, braco e luminaria; a luminaria aponta para a pista.
-  const poles=new THREE.Group();
-  const poleGeo=new THREE.CylinderGeometry(.065,.095,4.6,10);
-  const armGeo=new THREE.BoxGeometry(1.15,.07,.07);
-  const lampGeo=new THREE.SphereGeometry(.16,10,8);
-  const polePts=[];
-  for(const road of roadNetwork){
-    if(road.type!=='asfalto')continue;
-    const curve=curveFromXZ(road.points,road.closed),pts=sampleRoad(road);
-    for(let i=8;i<pts.length-4&&polePts.length<48;i+=Math.max(8,Math.floor(pts.length/18))){
-      const p=pts[i],t=curve.getTangent(i/(pts.length-1)).normalize(),side=i%2?-1:1,nx=t.z*side,nz=-t.x*side;
-      polePts.push({x:p.x+nx*6.2,z:p.z+nz*6.2,side,nx,nz});
-    }
-  }
-  for(const p of polePts){
-    const post=new THREE.Mesh(poleGeo,poleMat);
-    post.position.set(p.x,2.3,p.z);
-    poles.add(post);
-    const arm=new THREE.Mesh(armGeo,armMat);
-    arm.position.set(p.x-p.nx*.48,4.48,p.z-p.nz*.48);
-    arm.rotation.y=Math.atan2(p.nz,p.nx);
-    poles.add(arm);
-    const lamp=new THREE.Mesh(lampGeo,lampMat);
-    lamp.position.set(p.x-p.nx*.98,4.38,p.z-p.nz*.98);
-    lamp.scale.set(1.35,.55,1.35);
-    poles.add(lamp);
-  }
-  streetDetailGroup.add(poles);
-
-  // Arvores em camadas, com tronco exposto e variacoes naturais de copa.
-  const trees=new THREE.Group();
-  const trunkGeo=new THREE.CylinderGeometry(.11,.17,1.45,8);
-  const crownGeo=new THREE.SphereGeometry(1,12,8);
-  let treeCount=0;
-  for(const road of roadNetwork){
-    const curve=curveFromXZ(road.points,road.closed),pts=sampleRoad(road);
-    for(let i=5;i<pts.length-2&&treeCount<70;i+=Math.max(12,Math.floor(pts.length/10))){
-      const p=pts[i],t=curve.getTangent(i/(pts.length-1)).normalize(),side=i%2?-1:1,nx=t.z*side,nz=-t.x*side;
-      const off=road.type==='terra'?7.5:10.5;
-      const scale=.78+(treeCount%4)*.12;
-      const tree=new THREE.Group();
-      const trunk=new THREE.Mesh(trunkGeo,treeTrunkMat);
-      trunk.position.set(p.x+nx*off,.72,p.z+nz*off);
-      trunk.scale.setScalar(scale);
-      tree.add(trunk);
-      const lower=new THREE.Mesh(crownGeo,treeCount%3===0?treeLeafLightMat:treeLeafMat);
-      lower.position.set(p.x+nx*off,1.65,p.z+nz*off);
-      lower.scale.set(.95*scale,1.15*scale,.95*scale);
-      tree.add(lower);
-      const upper=new THREE.Mesh(crownGeo,treeLeafMat);
-      upper.position.set(p.x+nx*off,2.35,p.z+nz*off);
-      upper.scale.set(.72*scale,.82*scale,.72*scale);
-      tree.add(upper);
-      trees.add(tree);
-      treeCount++;
-    }
-  }
-  streetDetailGroup.add(trees);
-
-  const crosswalkMat=mat(0xf1eee2,.86);
-  for(const j of ROAD_JUNCTIONS){
-    if(j.surface!=='asfalto')continue;
-    for(let k=-2;k<=2;k++){
-      const stripe=new THREE.Mesh(new THREE.BoxGeometry(.42,.012,5.8),crosswalkMat);
-      stripe.position.set(j.x+k*.72,.091,j.z+6.5);stripe.name='faixa-'+j.id;roadGroup.add(stripe);
-    }
-  }
-  // Cruzamentos asfaltados cobrem somente encontros urbanos.
-  // Bifurcações rurais recebem piso de terra, nunca uma mancha preta em cima da estrada.
-  for(const j of ROAD_JUNCTIONS){
-    const patch=new THREE.Mesh(
-      new THREE.CircleGeometry(j.radius,40),
-      j.surface==='terra'?dirtRoadMat:roadMat
-    );
-    patch.rotation.x=-Math.PI/2;
-    patch.position.set(j.x,.084,j.z);
-    patch.name=`cruzamento-${j.id}`;
-    roadGroup.add(patch);
-  }
-
-  // Entrada da futura cidade: a avenida termina ANTES da área reservada.
+  // Entroncamento amplo da futura cidade.
   const cityReserve=new THREE.Mesh(
-    new THREE.CircleGeometry(5.5,28),
+    new THREE.CylinderGeometry(14.5,14.5,.045,36),
     roadMat
   );
-  cityReserve.rotation.x=-Math.PI/2;
-  cityReserve.position.set(72,.084,216);
-  cityReserve.name='entradaCidadeFutura';
+  cityReserve.position.set(95,.025,220);
+  cityReserve.name='entroncamentoCidadeFutura';
   roadGroup.add(cityReserve);
 
-  // Balizadores somente no anel urbano, por instancing.
-  const reflectorGeo=new THREE.BoxGeometry(.10,.30,.10);
+  // Balizadores eficientes no anel, usando instancing em vez de dezenas de meshes.
+  const reflectorGeo=new THREE.BoxGeometry(.10,.32,.10);
   const reflectorMat=mat(0xd8c56f,.78);
-  const reflectors=new THREE.InstancedMesh(
-    reflectorGeo,reflectorMat,40
-  );
+  const reflectors=new THREE.InstancedMesh(reflectorGeo,reflectorMat,36);
   const reflectorDummy=new THREE.Object3D();
-  const ringRoad=roadNetwork[0];
-  const ringCurve=curveFromXZ(ringRoad.points,true);
-  for(let i=0;i<40;i++){
-    const t=i/40;
+  const ringCurve=curveFromXZ(roadNetwork[0].points,true);
+  for(let i=0;i<36;i++){
+    const t=i/36;
     const p=ringCurve.getPoint(t);
     const tangent=ringCurve.getTangent(t).normalize();
     const nx=tangent.z,nz=-tangent.x;
-    const offset=ringRoad.width/2+ringRoad.sidewalkWidth+.72;
-    reflectorDummy.position.set(
-      p.x+nx*offset,.15,p.z+nz*offset
-    );
+    reflectorDummy.position.set(p.x+nx*5.2,.16,p.z+nz*5.2);
     reflectorDummy.rotation.y=Math.atan2(tangent.x,tangent.z);
     reflectorDummy.updateMatrix();
     reflectors.setMatrixAt(i,reflectorDummy.matrix);
@@ -842,14 +458,13 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     return mesh;
   }
 
-  // Pequeno apron de concreto entre o portão e a rua.
-  // Fica abaixo da superfície do asfalto para nunca cobrir a via.
+  // Acesso residencial: liga a pista diretamente à entrada lateral aberta do lote.
   const driveway=new THREE.Mesh(
-    new THREE.BoxGeometry(5.0,.020,4.8),
+    new THREE.BoxGeometry(13.4,.045,4.8),
     pathMat
   );
-  driveway.position.set(-19.65,.010,26.35);
-  driveway.name='apronPortaoCasa';
+  driveway.position.set(-15.55,.0225,26.35);
+  driveway.name='acessoCasa';
   houseGroup.add(driveway);
 
   const HOUSE={
@@ -2053,20 +1668,6 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
       return{ok:false,reason:'fora-dos-limites',area:area.id};
     }
 
-    for(const occupied of roadOccupancy){
-      if(
-        x1>occupied.x0&&x0<occupied.x1&&
-        z1>occupied.z0&&z0<occupied.z1
-      ){
-        return{
-          ok:false,
-          reason:'via-existente',
-          road:occupied.road,
-          area:area.id
-        };
-      }
-    }
-
     for(const c of colliders){
       if(x1>c.x0&&x0<c.x1&&z1>c.z0&&z0<c.z1){
         return{ok:false,reason:'colisor',collider:c.id,label:c.label,area:area.id};
@@ -2232,15 +1833,14 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     const flat=flatAreaAt(x,z);
     if(flat)return flat.label;
 
-    if(Math.abs(x)<=190&&z>=-165&&z<=200)return'ZONA URBANA';
-    if(z<-210&&x>100)return'ZONA RURAL SUDESTE';
-    if(z<-230&&x<-100)return'ZONA RURAL SUDOESTE';
-    if(x>200)return'ZONA RURAL LESTE';
-    if(x<-200&&z>80)return'ZONA RURAL NOROESTE';
-    if(x<-200)return'ZONA RURAL OESTE';
-    if(z<-165)return'ZONA RURAL SUL';
-    if(z>200)return'EXPANSÃO NORTE';
-    return'PERIFERIA URBANA';
+    if(z<-105&&x<-120)return'RURAL OESTE';
+    if(z<-115&&x>70)return'RURAL SUL';
+    if(x>120&&z>35&&z<150)return'RURAL LESTE';
+    if(z>145&&x>35)return'ACESSO CIDADE';
+    if(z>120&&x<-105)return'EXPANSÃO OESTE';
+    if(z<-45)return'CORREDOR SUL';
+    if(z>115)return'CORREDOR NORTE';
+    return'NÚCLEO VIÁRIO CENTRAL';
   }
 
   function terrainPose(x,z,yaw,halfLength,halfWidth){
@@ -2323,6 +1923,6 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   return{
     group,colliders,groundHeight,moveXZ,moveVehicle,zoneAt,
     terrainPose,twoWheelPose,cameraSafePosition,vehicleBlocked:blockedOBB,vehicleTurnAllowed,limit:LIMIT,
-    worldSize:LIMIT*2,flatAreas:FLAT_AREAS,roadNetwork,roadLayoutAudit,terrainInfoAt,canPlaceRect,addBoxCollider,removeCollider,updateWorld
+    worldSize:LIMIT*2,flatAreas:FLAT_AREAS,roadNetwork,terrainInfoAt,canPlaceRect,addBoxCollider,removeCollider,updateWorld
   };
 }

@@ -28,10 +28,15 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   const concreteMat=mat(0x9a9b93,.9);
   const rampMat=mat(0x5b5e62,.88);
   const wallMat=mat(0x8b7767,.9);
-  const houseMat=mat(0xd1c0a6,.92);
-  const roofMat=mat(0x6b5040,.9);
+  const houseMat=mat(0xf2f0e8,.9);
+  const trimMat=mat(0xd8d3c7,.92);
+  const roofMat=mat(0x7a4d35,.88);
   const woodMat=mat(0x68472e,.9);
   const pathMat=mat(0x817a70,.96);
+  const glassMat=new THREE.MeshStandardMaterial({
+    color:0x263238,roughness:.28,metalness:.05,
+    transparent:true,opacity:.72
+  });
 
   // Registro único de colisores físicos. O visual pode mudar sem alterar a física.
   const colliders=[];
@@ -178,8 +183,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
 
   // ---------------------------------------------------------------------------
   // PRIMEIRA ÁREA REAL DO MUNDO: CASA + ACESSO + PORTEIRA
-  // Mantém visual e colisão separados. Ainda não existe cerca perimetral para
-  // garantir que a entrada nunca fique bloqueada por um trecho de cerca.
+  // Visual rural detalhado; colisão estrutural continua simples e separada.
   // ---------------------------------------------------------------------------
   const houseGroup=new THREE.Group();
   houseGroup.name='areaCasa';
@@ -194,17 +198,28 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     return mesh;
   }
 
+  function houseDetailBox(w,h,d,x,y,z,material=trimMat,name='detalheCasa'){
+    const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),material);
+    mesh.position.set(x,y,z);
+    mesh.name=name;
+    houseGroup.add(mesh);
+    return mesh;
+  }
+
   // Acesso largo o suficiente para carro e moto, ligado ao final da pista.
   const driveway=new THREE.Mesh(new THREE.BoxGeometry(32.4,.045,5),pathMat);
   driveway.position.set(-26,.0225,25.5);
   driveway.name='acessoCasa';
   houseGroup.add(driveway);
 
-  // Casa simples e funcional. O vão da porta frontal permanece sem colisor.
-  const HOUSE={cx:-35,cz:36,w:13,d:9.5,h:2.8,t:.28,doorW:1.6};
+  const HOUSE={
+    cx:-35,cz:36,w:13,d:9.5,h:2.8,t:.28,
+    doorW:1.6,doorH:2.25
+  };
   const hx0=HOUSE.cx-HOUSE.w/2,hx1=HOUSE.cx+HOUSE.w/2;
   const hz0=HOUSE.cz-HOUSE.d/2,hz1=HOUSE.cz+HOUSE.d/2;
 
+  // Alvenaria branca em reboco/gesso, preservando a planta e os colisores.
   houseSolid(hx0,HOUSE.cz,HOUSE.t,HOUSE.d,HOUSE.h,'casa-oeste');
   houseSolid(hx1,HOUSE.cz,HOUSE.t,HOUSE.d,HOUSE.h,'casa-leste');
   houseSolid(HOUSE.cx,hz1,HOUSE.w,HOUSE.t,HOUSE.h,'casa-fundo');
@@ -212,20 +227,24 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   const frontLeftW=(HOUSE.w-HOUSE.doorW)/2;
   const frontRightW=frontLeftW;
   houseSolid(
-    hx0+frontLeftW/2,
-    hz0,
-    frontLeftW,
-    HOUSE.t,
-    HOUSE.h,
+    hx0+frontLeftW/2,hz0,frontLeftW,HOUSE.t,HOUSE.h,
     'casa-frente-esquerda'
   );
   houseSolid(
-    hx1-frontRightW/2,
-    hz0,
-    frontRightW,
-    HOUSE.t,
-    HOUSE.h,
+    hx1-frontRightW/2,hz0,frontRightW,HOUSE.t,HOUSE.h,
     'casa-frente-direita'
+  );
+
+  // Fecha visualmente a parede acima da porta sem bloquear o vão no colisor 2D.
+  houseDetailBox(
+    HOUSE.doorW+.18,
+    HOUSE.h-HOUSE.doorH,
+    HOUSE.t,
+    HOUSE.cx,
+    HOUSE.doorH+(HOUSE.h-HOUSE.doorH)/2,
+    hz0,
+    houseMat,
+    'vergaPorta'
   );
 
   const floorMesh=new THREE.Mesh(
@@ -237,23 +256,205 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   floorMesh.name='pisoCasa';
   houseGroup.add(floorMesh);
 
-  // Telhado grosso com beiral. É apenas visual para não criar um colisor 2D
-  // cobrindo todo o interior da casa.
-  const roof=new THREE.Mesh(
-    new THREE.BoxGeometry(HOUSE.w+.7,.42,HOUSE.d+.7),
+  // Rodapé externo levemente saliente para quebrar o aspecto de caixa lisa.
+  houseDetailBox(HOUSE.w+.12,.18,.10,HOUSE.cx,.09,hz0-.18,trimMat,'rodapeFrontal');
+  houseDetailBox(.10,.18,HOUSE.d+.12,hx0-.18,.09,HOUSE.cz,trimMat,'rodapeOeste');
+  houseDetailBox(.10,.18,HOUSE.d+.12,hx1+.18,.09,HOUSE.cz,trimMat,'rodapeLeste');
+
+  // TELHADO COLONIAL DE DUAS ÁGUAS.
+  const roofAngle=THREE.MathUtils.degToRad(20);
+  const roofOverhang=.50;
+  const roofSpanZ=HOUSE.d+roofOverhang*2;
+  const roofHalfRun=roofSpanZ/2;
+  const roofRise=Math.tan(roofAngle)*roofHalfRun;
+  const roofSlopeLength=roofHalfRun/Math.cos(roofAngle);
+  const roofThickness=.24;
+  const roofCenterY=HOUSE.h+roofRise/2;
+
+  const frontRoof=new THREE.Mesh(
+    new THREE.BoxGeometry(HOUSE.w+roofOverhang*2,roofThickness,roofSlopeLength),
     roofMat
   );
-  roof.position.set(HOUSE.cx,HOUSE.h+.21,HOUSE.cz);
-  roof.name='telhadoCasa';
-  houseGroup.add(roof);
+  frontRoof.position.set(HOUSE.cx,roofCenterY,HOUSE.cz-roofHalfRun/2);
+  frontRoof.rotation.x=-roofAngle;
+  frontRoof.name='telhadoAguaFrontal';
+  houseGroup.add(frontRoof);
 
-  // Caminho de pedestre da garagem/entrada até o vão da porta frontal.
+  const backRoof=new THREE.Mesh(
+    new THREE.BoxGeometry(HOUSE.w+roofOverhang*2,roofThickness,roofSlopeLength),
+    roofMat
+  );
+  backRoof.position.set(HOUSE.cx,roofCenterY,HOUSE.cz+roofHalfRun/2);
+  backRoof.rotation.x=roofAngle;
+  backRoof.name='telhadoAguaTraseira';
+  houseGroup.add(backRoof);
+
+  // Cumeeira grossa cobrindo a união das duas águas.
+  houseDetailBox(
+    HOUSE.w+roofOverhang*2+.08,.18,.22,
+    HOUSE.cx,HOUSE.h+roofRise+.03,HOUSE.cz,
+    roofMat,'cumeeiraTelhado'
+  );
+
+  // Oitões triangulares fecham os vãos sob a cobertura.
+  function addGable(z,name){
+    const shape=new THREE.Shape();
+    shape.moveTo(-HOUSE.w/2,0);
+    shape.lineTo(HOUSE.w/2,0);
+    shape.lineTo(0,roofRise-.05);
+    shape.closePath();
+    const geometry=new THREE.ExtrudeGeometry(shape,{
+      depth:.16,bevelEnabled:false,steps:1
+    });
+    const mesh=new THREE.Mesh(geometry,houseMat);
+    mesh.position.set(HOUSE.cx,HOUSE.h,z-.08);
+    mesh.name=name;
+    houseGroup.add(mesh);
+  }
+  addGable(hz0,'oitaoFrontal');
+  addGable(hz1,'oitaoTraseiro');
+
+  // VARANDA FRONTAL RÚSTICA.
+  const verandaDepth=2.45;
+  const verandaRoof=new THREE.Mesh(
+    new THREE.BoxGeometry(HOUSE.w+.45,.16,verandaDepth+.28),
+    roofMat
+  );
+  verandaRoof.position.set(HOUSE.cx,2.60,hz0-verandaDepth/2+.05);
+  verandaRoof.rotation.x=THREE.MathUtils.degToRad(-8);
+  verandaRoof.name='coberturaVaranda';
+  houseGroup.add(verandaRoof);
+
+  // Viga frontal de madeira sob o beiral da varanda.
+  houseDetailBox(
+    HOUSE.w+.1,.18,.18,
+    HOUSE.cx,2.34,hz0-verandaDepth+.02,
+    woodMat,'vigaVaranda'
+  );
+
+  const verandaPostZ=hz0-verandaDepth+.02;
+  for(const x of[HOUSE.cx-5.7,HOUSE.cx-2.25,HOUSE.cx+2.25,HOUSE.cx+5.7]){
+    const post=houseDetailBox(.20,2.35,.20,x,1.175,verandaPostZ,woodMat,'mouraoVaranda');
+    const collider=addBoxCollider({
+      cx:x,cz:verandaPostZ,w:.22,d:.22,h:2.35,
+      label:'mourao-varanda',owner:'casa'
+    });
+    post.userData.colliderId=collider.id;
+  }
+
+  // Pequena soleira e caminho de pedestre até a porta.
+  houseDetailBox(2.0,.10,.52,HOUSE.cx,.05,hz0-.38,concreteMat,'soleiraPorta');
   const footPath=new THREE.Mesh(new THREE.BoxGeometry(2.2,.035,4.1),pathMat);
   footPath.position.set(HOUSE.cx,.0175,29.2);
   footPath.name='caminhoPortaCasa';
   houseGroup.add(footPath);
 
-  // Porteira de uma folha: abre para dentro do lote e deixa a faixa inteira livre.
+  // PORTA PRINCIPAL FUNCIONAL COM BATENTE.
+  const doorLeft=HOUSE.cx-HOUSE.doorW/2;
+  const doorPivot=new THREE.Group();
+  doorPivot.name='portaPrincipalPivot';
+  doorPivot.position.set(doorLeft,0,hz0-.16);
+  houseGroup.add(doorPivot);
+
+  const doorLeaf=new THREE.Mesh(
+    new THREE.BoxGeometry(HOUSE.doorW-.08,HOUSE.doorH-.08,.10),
+    woodMat
+  );
+  doorLeaf.position.set((HOUSE.doorW-.08)/2,HOUSE.doorH/2,0);
+  doorLeaf.name='portaPrincipalFolha';
+  doorPivot.add(doorLeaf);
+
+  // Travessas decorativas da folha.
+  for(const y of[.42,1.12,1.82]){
+    const rail=new THREE.Mesh(
+      new THREE.BoxGeometry(HOUSE.doorW-.20,.09,.035),
+      trimMat
+    );
+    rail.position.set((HOUSE.doorW-.08)/2,y,-.068);
+    doorPivot.add(rail);
+  }
+
+  // Batente completo, mantendo livre a faixa central da passagem.
+  houseDetailBox(.12,HOUSE.doorH+.16,.16,doorLeft-.06,(HOUSE.doorH+.16)/2,hz0-.17,woodMat,'batentePortaE');
+  houseDetailBox(.12,HOUSE.doorH+.16,.16,doorLeft+HOUSE.doorW+.06,(HOUSE.doorH+.16)/2,hz0-.17,woodMat,'batentePortaD');
+  houseDetailBox(HOUSE.doorW+.24,.12,.16,HOUSE.cx,HOUSE.doorH+.08,hz0-.17,woodMat,'batentePortaTopo');
+
+  let doorCollider=addBoxCollider({
+    cx:HOUSE.cx,cz:hz0,
+    w:HOUSE.doorW,d:.18,h:HOUSE.doorH,
+    label:'porta-principal-fechada',owner:'casa'
+  });
+  const doorState={angle:0,target:0};
+
+  function updateDoor(dt,targetPosition){
+    if(!targetPosition)return;
+    const distance=Math.hypot(
+      targetPosition.x-HOUSE.cx,
+      targetPosition.z-hz0
+    );
+
+    if(distance<2.5)doorState.target=-Math.PI/2;
+    else if(distance>3.6)doorState.target=0;
+
+    if(doorState.target!==0&&doorCollider){
+      removeCollider(doorCollider);
+      doorCollider=null;
+    }
+
+    doorState.angle=THREE.MathUtils.lerp(
+      doorState.angle,
+      doorState.target,
+      1-Math.exp(-6.5*dt)
+    );
+    if(Math.abs(doorState.angle-doorState.target)<.002){
+      doorState.angle=doorState.target;
+    }
+    doorPivot.rotation.y=doorState.angle;
+
+    if(doorState.target===0&&Math.abs(doorState.angle)<.025&&!doorCollider){
+      doorCollider=addBoxCollider({
+        cx:HOUSE.cx,cz:hz0,
+        w:HOUSE.doorW,d:.18,h:HOUSE.doorH,
+        label:'porta-principal-fechada',owner:'casa'
+      });
+    }
+  }
+
+  // JANELAS RÚSTICAS: vidro escuro recuado + moldura e cruzeta de madeira.
+  function addFrontWindow(x,name){
+    const z=hz0-.165,y=1.55,w=2.05,h=1.25;
+    houseDetailBox(w,h,.045,x,y,z,glassMat,name+'Vidro');
+    houseDetailBox(.11,h+.18,.11,x-w/2-.02,y,z-.035,woodMat,name+'MolduraE');
+    houseDetailBox(.11,h+.18,.11,x+w/2+.02,y,z-.035,woodMat,name+'MolduraD');
+    houseDetailBox(w+.20,.11,.11,x,y+h/2+.04,z-.035,woodMat,name+'MolduraTopo');
+    houseDetailBox(w+.20,.11,.11,x,y-h/2-.04,z-.035,woodMat,name+'MolduraBase');
+    houseDetailBox(.08,h,.10,x,y,z-.055,woodMat,name+'TravessaV');
+    houseDetailBox(w,.08,.10,x,y,z-.055,woodMat,name+'TravessaH');
+  }
+
+  function addSideWindow(x,z,side,name){
+    const y=1.55,w=1.85,h=1.20;
+    const px=x+side*.165;
+    houseDetailBox(.045,h,w,px,y,z,glassMat,name+'Vidro');
+    houseDetailBox(.11,h+.18,.11,px+side*.035,y,z-w/2-.02,woodMat,name+'MolduraA');
+    houseDetailBox(.11,h+.18,.11,px+side*.035,y,z+w/2+.02,woodMat,name+'MolduraB');
+    houseDetailBox(.11,.11,w+.20,px+side*.035,y+h/2+.04,z,woodMat,name+'MolduraTopo');
+    houseDetailBox(.11,.11,w+.20,px+side*.035,y-h/2-.04,z,woodMat,name+'MolduraBase');
+    houseDetailBox(.10,h,.08,px+side*.055,y,z,woodMat,name+'TravessaV');
+    houseDetailBox(.10,.08,w,px+side*.055,y,z,woodMat,name+'TravessaH');
+  }
+
+  addFrontWindow(HOUSE.cx-3.7,'janelaFrontalE');
+  addFrontWindow(HOUSE.cx+3.7,'janelaFrontalD');
+  addSideWindow(hx0,HOUSE.cz,-1,'janelaOeste');
+  addSideWindow(hx1,HOUSE.cz,1,'janelaLeste');
+
+  // Detalhes verticais nos cantos deixam a fachada menos chapada.
+  for(const x of[hx0-.17,hx1+.17]){
+    houseDetailBox(.13,HOUSE.h,.13,x,HOUSE.h/2,hz0-.17,trimMat,'cunhalFrontal');
+  }
+
+  // PORTEIRA ORIGINAL PRESERVADA.
   const GATE={x:-23.4,z0:23.0,width:5.0,height:1.45};
   function gatePost(z){
     const post=new THREE.Mesh(new THREE.BoxGeometry(.3,1.9,.3),woodMat);
@@ -302,7 +503,6 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     if(distance<6.5)gateState.target=-Math.PI/2;
     else if(distance>8.5)gateState.target=0;
 
-    // Ao começar a abrir, remove a barreira física imediatamente.
     if(gateState.target!==0&&gateCollider){
       removeCollider(gateCollider);
       gateCollider=null;
@@ -319,7 +519,6 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     }
     gatePivot.rotation.y=gateState.angle;
 
-    // O colisor volta somente quando a porteira terminou de fechar.
     if(gateState.target===0&&Math.abs(gateState.angle)<.025&&!gateCollider){
       gateCollider=addBoxCollider({
         cx:GATE.x,cz:GATE.z0+GATE.width/2,
@@ -613,6 +812,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
 
   function updateWorld(dt,targetPosition){
     updateGate(dt,targetPosition);
+    updateDoor(dt,targetPosition);
   }
 
   // Evita que uma parede fique entre a câmera e o alvo.

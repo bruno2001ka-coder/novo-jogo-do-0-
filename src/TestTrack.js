@@ -1,6 +1,6 @@
 import*as THREE from'three';
 
-const LIMIT=260;
+const LIMIT=500;
 // Compatibilidade textual da revisão antiga: estes obstáculos NÃO existem mais no mundo.
 // RAMPA / PLATAFORMA · LOMBADA · GARAGEM · DEGRAUS
 const LEGACY_REVIEW_LABELS='RAMPA / PLATAFORMA · LOMBADA · GARAGEM · DEGRAUS';
@@ -22,7 +22,7 @@ function mat(color,roughness=.95){return new THREE.MeshStandardMaterial({color,r
 
 export function criarCampoDeProvas(scene,{debug=false}={}){
   const group=new THREE.Group();
-  group.name='mundoAberto520';
+  group.name='mundoAberto1000';
   scene.add(group);
 
   const groundMat=mat(0x667d50);
@@ -96,10 +96,10 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     return true;
   }
 
-  const ground=new THREE.Mesh(new THREE.PlaneGeometry(520,520,1,1),groundMat);
+  const ground=new THREE.Mesh(new THREE.PlaneGeometry(1000,1000,1,1),groundMat);
   ground.rotation.x=-Math.PI/2;
   ground.position.y=0;
-  ground.name='chaoMundo520';
+  ground.name='chaoMundo1000';
   group.add(ground);
 
   // Mantém a grade central original como referência técnica.
@@ -388,6 +388,48 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
         Object.freeze([176,96])
       ])
     })
+    Object.freeze({
+      id:'anel-perimetral',
+      type:'cascalho',width:7.4,sidewalks:false,closed:true,segments:180,
+      connects:['ligacao-leste','ligacao-sul','ligacao-oeste'],
+      points:Object.freeze([
+        Object.freeze([-440,-360]),Object.freeze([-260,-445]),
+        Object.freeze([20,-460]),Object.freeze([300,-430]),
+        Object.freeze([455,-300]),Object.freeze([470,-40]),
+        Object.freeze([455,220]),Object.freeze([330,405]),
+        Object.freeze([50,455]),Object.freeze([-240,440]),
+        Object.freeze([-445,320]),Object.freeze([-470,60]),
+        Object.freeze([-455,-170])
+      ])
+    }),
+    Object.freeze({
+      id:'ligacao-leste',
+      type:'cascalho',width:6.8,sidewalks:false,closed:false,segments:70,
+      connects:['rota-rural-sudeste','anel-perimetral'],
+      points:Object.freeze([
+        Object.freeze([176,96]),Object.freeze([245,125]),
+        Object.freeze([320,150]),Object.freeze([390,190]),
+        Object.freeze([450,220])
+      ])
+    }),
+    Object.freeze({
+      id:'ligacao-sul',
+      type:'cascalho',width:6.8,sidewalks:false,closed:false,segments:70,
+      connects:['acesso-fazenda-sul','anel-perimetral'],
+      points:Object.freeze([
+        Object.freeze([151,-192]),Object.freeze([135,-255]),
+        Object.freeze([105,-330]),Object.freeze([70,-405])
+      ])
+    }),
+    Object.freeze({
+      id:'ligacao-oeste',
+      type:'cascalho',width:6.8,sidewalks:false,closed:false,segments:70,
+      connects:['acesso-fazenda-oeste','anel-perimetral'],
+      points:Object.freeze([
+        Object.freeze([-170,-177]),Object.freeze([-255,-225]),
+        Object.freeze([-345,-285]),Object.freeze([-445,-320])
+      ])
+    }),
   ]);
 
   for(const roadDef of roadNetwork){
@@ -402,6 +444,64 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
       closed:roadDef.closed,
       segments:roadDef.segments
     });
+  }
+
+  // Detalhes viarios leves e independentes da fisica dos atores.
+  const detailGroup=new THREE.Group();
+  detailGroup.name='postesEArvores';
+  roadGroup.add(detailGroup);
+
+  const poleMaterial=mat(0x3b4142,.74);
+  const armMaterial=mat(0x51585a,.72);
+  const lampMaterial=new THREE.MeshStandardMaterial({color:0xffedb0,emissive:0xffbd55,emissiveIntensity:1.5,roughness:.3});
+  const trunkMaterial=mat(0x5b3b26,.98);
+  const crownMaterial=mat(0x2e6137,.96);
+  const crownLightMaterial=mat(0x477b42,.96);
+  const poleGeometry=new THREE.CylinderGeometry(.065,.095,4.5,8);
+  const armGeometry=new THREE.BoxGeometry(1.05,.07,.07);
+  const lampGeometry=new THREE.SphereGeometry(.16,8,6);
+  const trunkGeometry=new THREE.CylinderGeometry(.10,.16,1.35,8);
+  const crownGeometry=new THREE.SphereGeometry(1,10,8);
+
+  let poleCount=0;
+  let treeCount=0;
+  for(const road of roadNetwork){
+    const curve=curveFromXZ(road.points,road.closed);
+    const points=road.points;
+    if(road.type==='asfalto'){
+      for(let i=1;i<points.length-1&&poleCount<34;i+=2){
+        const current=points[i],previous=points[i-1],next=points[i+1]||current;
+        const tangent=new THREE.Vector3(next[0]-previous[0],0,next[1]-previous[1]).normalize();
+        const side=i%2?-1:1,nx=tangent.z*side,nz=-tangent.x*side;
+        const pole=new THREE.Mesh(poleGeometry,poleMaterial);
+        pole.position.set(current[0]+nx*6.4,2.25,current[1]+nz*6.4);
+        detailGroup.add(pole);
+        const arm=new THREE.Mesh(armGeometry,armMaterial);
+        arm.position.set(current[0]+nx*5.9,4.35,current[1]+nz*5.9);
+        arm.rotation.y=Math.atan2(tangent.x,tangent.z);
+        detailGroup.add(arm);
+        const lamp=new THREE.Mesh(lampGeometry,lampMaterial);
+        lamp.position.set(current[0]+nx*5.25,4.22,current[1]+nz*5.25);
+        lamp.scale.set(1.35,.55,1.35);
+        detailGroup.add(lamp);
+        poleCount++;
+      }
+    }
+    for(let i=0;i<points.length&&treeCount<58;i+=2){
+      const current=points[i],previous=points[Math.max(0,i-1)],next=points[Math.min(points.length-1,i+1)];
+      const tangent=new THREE.Vector3(next[0]-previous[0],0,next[1]-previous[1]).normalize();
+      const side=i%2?-1:1,nx=tangent.z*side,nz=-tangent.x*side;
+      const offset=road.type==='asfalto'?10.5:8.2;
+      const size=.78+(treeCount%4)*.11;
+      const x=current[0]+nx*offset,z=current[1]+nz*offset;
+      const trunk=new THREE.Mesh(trunkGeometry,trunkMaterial);
+      trunk.position.set(x,.68,z);trunk.scale.setScalar(size);detailGroup.add(trunk);
+      const lower=new THREE.Mesh(crownGeometry,treeCount%3===0?crownLightMaterial:crownMaterial);
+      lower.position.set(x,1.65,z);lower.scale.set(.95*size,1.12*size,.95*size);detailGroup.add(lower);
+      const upper=new THREE.Mesh(crownGeometry,crownMaterial);
+      upper.position.set(x,2.35,z);upper.scale.set(.68*size,.82*size,.68*size);detailGroup.add(upper);
+      treeCount++;
+    }
   }
 
   // Entroncamento amplo da futura cidade.

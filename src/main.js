@@ -392,8 +392,8 @@ function updateCharacterAnimation(dt,{moving=false,running=false,speed=0,pilot=f
     if(character.current){character.current.paused=true;character.current.time=0}
   }else if(character.current){
     character.current.paused=false;
-    const natural=running?4.53:1.21;
-    character.current.timeScale=THREE.MathUtils.clamp(speed/natural,.55,4.2);
+    const natural=running?5.2:1.85;
+    character.current.timeScale=THREE.MathUtils.clamp(speed/natural,.75,1.35);
   }
   character.mixer.update(dt);
 }
@@ -404,16 +404,18 @@ function walk(dt){
   const inputLen=Math.hypot(ix,iz);
   const hasInput=inputLen>.08;
   const running=hasInput&&!!(keys.ShiftLeft||keys.ShiftRight||Math.hypot(joy.x,joy.y)>.86);
-  const maxSpeed=running?6.6:4.25;
+  const maxSpeed=running?6.2:1.85;
+  const push=THREE.MathUtils.clamp(inputLen,0,1);
 
   let targetX=0,targetZ=0;
   if(hasInput){
-    const nx=ix/Math.max(1,inputLen),nz=iz/Math.max(1,inputLen);
+    const nx=ix/inputLen,nz=iz/inputLen;
     const fX=-Math.sin(camYaw),fZ=-Math.cos(camYaw);
     const rX=Math.cos(camYaw),rZ=-Math.sin(camYaw);
     let mx=fX*nz+rX*nx,mz=fZ*nz+rZ*nx;
     const ml=Math.hypot(mx,mz)||1;mx/=ml;mz/=ml;
-    targetX=mx*maxSpeed;targetZ=mz*maxSpeed;
+    targetX=mx*maxSpeed*push;
+    targetZ=mz*maxSpeed*push;
   }
 
   const floorBefore=track.groundHeight(player.position.x,player.position.z);

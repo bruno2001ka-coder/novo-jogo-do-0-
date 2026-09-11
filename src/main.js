@@ -13,9 +13,9 @@ if(debug)document.body.classList.add('debug');
 
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x9fc2da);
-scene.fog=new THREE.Fog(0x9fc2da,260,780);
+scene.fog=new THREE.Fog(0x9fc2da,320,980);
 
-const camera=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.1,1050);
+const camera=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.1,1300);
 const renderer=new THREE.WebGLRenderer({antialias:!mobile,powerPreference:'high-performance'});
 renderer.setPixelRatio(mobile?1:Math.min(devicePixelRatio||1,1.25));
 renderer.setSize(innerWidth,innerHeight);

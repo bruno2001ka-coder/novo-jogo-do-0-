@@ -1,4 +1,4 @@
-const CACHE='quintal-clean-v16';
+const CACHE='quintal-clean-v17';
 const CORE=[
   './','./index.html','./manifest.webmanifest','./icon.svg',
   './src/main.js','./src/GamePhysics.js','./src/Rodas.js','./src/TestTrack.js','./src/Profiler.js'

@@ -125,6 +125,7 @@ const vehicles={
     steerResponse:5.8,steerState:0,wheelBase:1.42,
     yawRate:0,maxYawRate:1.7,yawResponse:9,angularDamping:12,
     maxPitch:.32,maxRoll:.48,
+    bodyPitch:0,longitudinalAccel:0,prevSpeed:0,
     lean:.34,label:'MOTO',wheels:null,radius:.44,
     halfLength:1.0,halfWidth:.27,maxStep:.22
   },
@@ -472,15 +473,17 @@ function animateWheels(v,distance,steerVisual){
   if(!v.wheels)return;
 
   const isCar=v===vehicles.car;
-  if(isCar)v.obj.updateMatrixWorld(true);
+  const isMoto=v===vehicles.moto;
+  if(isCar||isMoto)v.obj.updateMatrixWorld(true);
 
   for(const r of v.wheels){
     r.angulo=(r.angulo||0)+distance/Math.max(.05,r.raio||.3);
     r.malha.rotation[r.eixoGiro]=r.angulo;
     if(r.dianteira)r.pivo.rotation.y=steerVisual;
 
-    // Curso visual só no carro. Mantém o pivô original como ponto neutro e move no máximo ±8 cm.
-    if(isCar&&r.pivo.parent){
+    // Curso visual independente: carro ±8 cm, moto ±6 cm.
+    // A dianteira encontra o obstáculo antes porque cada roda mede o solo sob sua própria posição global.
+    if((isCar||isMoto)&&r.pivo.parent){
       if(!Number.isFinite(r.neutralY)){
         r.neutralY=r.pivo.position.y;
         r.suspensionY=r.neutralY;
@@ -493,7 +496,12 @@ function animateWheels(v,distance,steerVisual){
       const wx=wheelNeutralWorld.x,wz=wheelNeutralWorld.z;
       const groundY=track.groundHeight(wx,wz);
       const wheelBottomY=wheelNeutralWorld.y-Math.max(.05,r.raio||.3);
-      const travelWorld=THREE.MathUtils.clamp(groundY-wheelBottomY,-.08,.08);
+      const travelLimit=isMoto?.06:.08;
+      const travelWorld=THREE.MathUtils.clamp(
+        groundY-wheelBottomY,
+        -travelLimit,
+        travelLimit
+      );
 
       wheelTargetWorld.copy(wheelNeutralWorld);
       wheelTargetWorld.y+=travelWorld;
@@ -501,10 +509,11 @@ function animateWheels(v,distance,steerVisual){
       r.pivo.parent.worldToLocal(wheelTargetLocal);
 
       const targetLocalY=wheelTargetLocal.y;
+      const suspensionResponse=isMoto?(r.dianteira?18:15):16;
       r.suspensionY=THREE.MathUtils.lerp(
         r.suspensionY,
         targetLocalY,
-        expAlpha(16,FIXED_DT)
+        expAlpha(suspensionResponse,FIXED_DT)
       );
       r.pivo.position.y=r.suspensionY;
     }
@@ -556,6 +565,20 @@ function applyVehicleGroundPose(v,steerAngleValue,dt,name){
 
     secondaryPitch=v.bodyPitch;
     secondaryRoll=v.bodyRoll;
+  }else if(name==='moto'){
+    // Mergulho arcade do garfo e assentada traseira sem alterar o controle da moto.
+    const brakeLoad=THREE.MathUtils.clamp(-v.longitudinalAccel/11,0,1);
+    const accelLoad=THREE.MathUtils.clamp(v.longitudinalAccel/9,0,1);
+    const pitchTarget=
+      accelLoad*THREE.MathUtils.degToRad(1.75)-
+      brakeLoad*THREE.MathUtils.degToRad(2.75);
+
+    v.bodyPitch=THREE.MathUtils.lerp(
+      v.bodyPitch,
+      pitchTarget,
+      expAlpha(9,dt)
+    );
+    secondaryPitch=v.bodyPitch;
   }
 
   const stable=stabilizeAttitude(

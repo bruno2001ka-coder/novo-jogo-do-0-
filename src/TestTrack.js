@@ -90,7 +90,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   function wall(cx,cz,w,d,h=2.6,label='parede'){
     const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),wallMat);
     mesh.position.set(cx,h/2,cz);group.add(mesh);
-    colliders.push({x0:cx-w/2,x1:cx+w/2,z0:cz-d/2,z1:cz+d/2,label});
+    colliders.push({x0:cx-w/2,x1:cx+w/2,y0:0,y1:h,z0:cz-d/2,z1:cz+d/2,label});
     return mesh;
   }
   wall(-10,-58,.35,15,2.7,'garagem-esquerda');
@@ -149,6 +149,55 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     return false;
   }
 
+  // SAT 2D: caixa orientada do veículo contra as paredes AABB do campo.
+  // O carro deixa de ser tratado como um círculo no centro; comprimento, largura e yaw entram na conta.
+  function obbIntersectsAABB(x,z,yaw,halfLength,halfWidth,a){
+    const fx=-Math.sin(yaw),fz=-Math.cos(yaw);
+    const rx=Math.cos(yaw),rz=-Math.sin(yaw);
+    const acx=(a.x0+a.x1)/2,acz=(a.z0+a.z1)/2;
+    const ahx=(a.x1-a.x0)/2,ahz=(a.z1-a.z0)/2;
+    const tx=acx-x,tz=acz-z;
+
+    if(Math.abs(tx*fx+tz*fz)>halfLength+ahx*Math.abs(fx)+ahz*Math.abs(fz))return false;
+    if(Math.abs(tx*rx+tz*rz)>halfWidth +ahx*Math.abs(rx)+ahz*Math.abs(rz))return false;
+    if(Math.abs(tx)>ahx+halfLength*Math.abs(fx)+halfWidth*Math.abs(rx))return false;
+    if(Math.abs(tz)>ahz+halfLength*Math.abs(fz)+halfWidth*Math.abs(rz))return false;
+    return true;
+  }
+
+  function blockedOBB(x,z,yaw,halfLength,halfWidth){
+    const fx=-Math.sin(yaw),fz=-Math.cos(yaw);
+    const rx=Math.cos(yaw),rz=-Math.sin(yaw);
+    const extentX=Math.abs(fx)*halfLength+Math.abs(rx)*halfWidth;
+    const extentZ=Math.abs(fz)*halfLength+Math.abs(rz)*halfWidth;
+    if(x-extentX<-LIMIT||x+extentX>LIMIT||z-extentZ<-LIMIT||z+extentZ>LIMIT)return true;
+    for(const a of colliders)if(obbIntersectsAABB(x,z,yaw,halfLength,halfWidth,a))return true;
+    return false;
+  }
+
+  function vehicleHeight(x,z,yaw,halfLength,halfWidth,twoWheel=false){
+    const fx=-Math.sin(yaw),fz=-Math.cos(yaw);
+    if(twoWheel){
+      const hF=groundHeight(x+fx*halfLength,z+fz*halfLength);
+      const hB=groundHeight(x-fx*halfLength,z-fz*halfLength);
+      return(hF+hB)/2;
+    }
+    const rx=Math.cos(yaw),rz=-Math.sin(yaw);
+    return(
+      groundHeight(x+fx*halfLength+rx*halfWidth,z+fz*halfLength+rz*halfWidth)+
+      groundHeight(x+fx*halfLength-rx*halfWidth,z+fz*halfLength-rz*halfWidth)+
+      groundHeight(x-fx*halfLength+rx*halfWidth,z-fz*halfLength+rz*halfWidth)+
+      groundHeight(x-fx*halfLength-rx*halfWidth,z-fz*halfLength-rz*halfWidth)
+    )/4;
+  }
+
+  function canVehicleStep(fromX,fromZ,toX,toZ,yaw,halfLength,halfWidth,maxStep,twoWheel){
+    return Math.abs(
+      vehicleHeight(toX,toZ,yaw,halfLength,halfWidth,twoWheel)-
+      vehicleHeight(fromX,fromZ,yaw,halfLength,halfWidth,twoWheel)
+    )<=maxStep+.001;
+  }
+
   function canStep(fromX,fromZ,toX,toZ,maxStep){
     return Math.abs(groundHeight(toX,toZ)-groundHeight(fromX,fromZ))<=maxStep+.001;
   }
@@ -172,6 +221,41 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
       position.z=zOnly;movedZ=dz;
     }
     return{x:movedX,z:movedZ,blocked:Math.abs(movedX-dx)>.001||Math.abs(movedZ-dz)>.001};
+  }
+
+  // Varredura curta por subpassos para o veículo não atravessar uma parede em um frame rápido.
+  function moveVehicle(position,yaw,dx,dz,halfLength,halfWidth,maxStep=.25,twoWheel=false){
+    const total=Math.hypot(dx,dz);
+    const steps=Math.max(1,Math.ceil(total/.16));
+    const sx=dx/steps,sz=dz/steps;
+    let movedX=0,movedZ=0,hit=false;
+
+    for(let i=0;i<steps;i++){
+      const ox=position.x,oz=position.z;
+      const nx=ox+sx,nz=oz+sz;
+
+      if(!blockedOBB(nx,nz,yaw,halfLength,halfWidth)&&
+         canVehicleStep(ox,oz,nx,nz,yaw,halfLength,halfWidth,maxStep,twoWheel)){
+        position.x=nx;position.z=nz;movedX+=sx;movedZ+=sz;continue;
+      }
+
+      let localX=0,localZ=0;
+      if(!blockedOBB(nx,oz,yaw,halfLength,halfWidth)&&
+         canVehicleStep(ox,oz,nx,oz,yaw,halfLength,halfWidth,maxStep,twoWheel)){
+        position.x=nx;localX=sx;
+      }
+      const baseX=position.x;
+      if(!blockedOBB(baseX,nz,yaw,halfLength,halfWidth)&&
+         canVehicleStep(baseX,oz,baseX,nz,yaw,halfLength,halfWidth,maxStep,twoWheel)){
+        position.z=nz;localZ=sz;
+      }
+
+      movedX+=localX;movedZ+=localZ;
+      if(Math.abs(localX-sx)>.0001||Math.abs(localZ-sz)>.0001)hit=true;
+      if(localX===0&&localZ===0)break;
+    }
+
+    return{x:movedX,z:movedZ,blocked:hit};
   }
 
   function zoneAt(x,z){
@@ -199,5 +283,50 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     };
   }
 
-  return{group,colliders,groundHeight,moveXZ,zoneAt,terrainPose,limit:LIMIT};
+  // Moto: dois contatos reais, um em cada roda. Não usa quatro cantos como um carro.
+  function twoWheelPose(x,z,yaw,halfLength){
+    const fX=-Math.sin(yaw),fZ=-Math.cos(yaw);
+    const hF=groundHeight(x+fX*halfLength,z+fZ*halfLength);
+    const hB=groundHeight(x-fX*halfLength,z-fZ*halfLength);
+    return{
+      y:(hF+hB)/2,
+      pitch:Math.atan2(hF-hB,Math.max(.01,halfLength*2)),
+      roll:0,
+    };
+  }
+
+  // Evita que uma parede fique entre a câmera e o alvo.
+  function cameraSafePosition(start,end,padding=.25){
+    const dx=end.x-start.x,dy=end.y-start.y,dz=end.z-start.z;
+    let best=1;
+
+    for(const a of colliders){
+      const min={x:a.x0-padding,y:(a.y0??0)-padding,z:a.z0-padding};
+      const max={x:a.x1+padding,y:(a.y1??3)+padding,z:a.z1+padding};
+      let t0=0,t1=1,valid=true;
+
+      for(const axis of['x','y','z']){
+        const s=start[axis],d=axis==='x'?dx:axis==='y'?dy:dz;
+        if(Math.abs(d)<1e-7){
+          if(s<min[axis]||s>max[axis]){valid=false;break}
+          continue;
+        }
+        let ta=(min[axis]-s)/d,tb=(max[axis]-s)/d;
+        if(ta>tb){const q=ta;ta=tb;tb=q}
+        t0=Math.max(t0,ta);t1=Math.min(t1,tb);
+        if(t0>t1){valid=false;break}
+      }
+      if(valid&&t0>=0&&t0<best)best=t0;
+    }
+
+    if(best>=1)return end.clone();
+    const len=Math.hypot(dx,dy,dz)||1;
+    const t=Math.max(.08,best-padding/len);
+    return new THREE.Vector3(start.x+dx*t,start.y+dy*t,start.z+dz*t);
+  }
+
+  return{
+    group,colliders,groundHeight,moveXZ,moveVehicle,zoneAt,
+    terrainPose,twoWheelPose,cameraSafePosition,vehicleBlocked:blockedOBB,limit:LIMIT
+  };
 }

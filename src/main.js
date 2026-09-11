@@ -102,9 +102,10 @@ function normalize(obj,{height=null,length=null,modelYaw=-Math.PI/2}={}){
 
 const player=new THREE.Group(),bike=new THREE.Group(),car=new THREE.Group();
 scene.add(player,bike,car);
-player.position.set(0,track.groundHeight(0,3),3);
-bike.position.set(5,track.groundHeight(5,0),0);
-car.position.set(-7,track.groundHeight(-7,0),0);
+const SPAWN={player:{x:0,z:22},moto:{x:3.2,z:22},car:{x:-3.2,z:22}};
+player.position.set(SPAWN.player.x,track.groundHeight(SPAWN.player.x,SPAWN.player.z),SPAWN.player.z);
+bike.position.set(SPAWN.moto.x,track.groundHeight(SPAWN.moto.x,SPAWN.moto.z),SPAWN.moto.z);
+car.position.set(SPAWN.car.x,track.groundHeight(SPAWN.car.x,SPAWN.car.z),SPAWN.car.z);
 
 const character={
   model:null,mixer:null,actions:{},current:null,pilot:null,basePos:new THREE.Vector3(),
@@ -268,10 +269,10 @@ function resetWheels(v){
 
 function reset(){
   if(mode==='foot'){
-    player.position.set(0,track.groundHeight(0,3),3);player.rotation.set(0,0,0);velY=0;
+    player.position.set(SPAWN.player.x,track.groundHeight(SPAWN.player.x,SPAWN.player.z),SPAWN.player.z);player.rotation.set(0,0,0);velY=0;
   }else{
-    const v=vehicles[mode],x=mode==='moto'?5:-7;
-    v.obj.position.set(x,track.groundHeight(x,0),0);
+    const v=vehicles[mode],s=SPAWN[mode];
+    v.obj.position.set(s.x,track.groundHeight(s.x,s.z),s.z);
     v.obj.rotation.set(0,0,0);v.speed=0;resetWheels(v);
   }
 }
@@ -362,10 +363,10 @@ function animateWheels(v,distance,steerVisual){
   }
 }
 
-function applyVehicleGroundPose(v,steer,dt){
-  const pose=track.terrainPose(
-    v.obj.position.x,v.obj.position.z,v.obj.rotation.y,v.halfLength,v.halfWidth
-  );
+function applyVehicleGroundPose(v,steer,dt,name){
+  const pose=name==='moto'
+    ?track.twoWheelPose(v.obj.position.x,v.obj.position.z,v.obj.rotation.y,v.halfLength)
+    :track.terrainPose(v.obj.position.x,v.obj.position.z,v.obj.rotation.y,v.halfLength,v.halfWidth);
   v.obj.position.y=pose.y;
   v.obj.rotation.x=THREE.MathUtils.lerp(v.obj.rotation.x,pose.pitch,1-Math.exp(-12*dt));
   const turnScale=THREE.MathUtils.clamp(Math.abs(v.speed)/Math.max(1,v.max),0,1);
@@ -384,18 +385,26 @@ function drive(dt,v,name){
   v.speed=THREE.MathUtils.clamp(v.speed,-v.max*.32,v.max);
 
   const turnScale=THREE.MathUtils.clamp(Math.abs(v.speed)/3,.18,1);
-  if(Math.abs(v.speed)>.04)v.obj.rotation.y+=steer*v.steer*turnScale*dt*Math.sign(v.speed);
+  if(Math.abs(v.speed)>.04&&steer){
+    const candidateYaw=v.obj.rotation.y+steer*v.steer*turnScale*dt*Math.sign(v.speed);
+    if(!track.vehicleBlocked(v.obj.position.x,v.obj.position.z,candidateYaw,v.halfLength,v.halfWidth)){
+      v.obj.rotation.y=candidateYaw;
+    }
+  }
 
   const requested=v.speed*dt;
   const f=new THREE.Vector3(-Math.sin(v.obj.rotation.y),0,-Math.cos(v.obj.rotation.y));
   const ox=v.obj.position.x,oz=v.obj.position.z;
-  const move=track.moveXZ(v.obj.position,f.x*requested,f.z*requested,v.radius,v.maxStep);
+  track.moveVehicle(
+    v.obj.position,v.obj.rotation.y,f.x*requested,f.z*requested,
+    v.halfLength,v.halfWidth,v.maxStep,name==='moto'
+  );
   const actual=(v.obj.position.x-ox)*f.x+(v.obj.position.z-oz)*f.z;
 
   if(Math.abs(requested)>.001&&Math.abs(actual)<Math.abs(requested)*.35)v.speed*=.15;
 
   animateWheels(v,actual,steer*.56);
-  applyVehicleGroundPose(v,steer,dt);
+  applyVehicleGroundPose(v,steer,dt,name);
 
   if(name==='moto'){
     player.visible=true;
@@ -409,13 +418,15 @@ function updateCamera(dt){
   const target=activeTarget().position;
   const h=mode==='foot'?1.25:1.05,dist=mode==='foot'?5.2:7.5;
   const cp=Math.cos(camPitch),sp=Math.sin(camPitch);
+  const pivot=new THREE.Vector3(target.x,target.y+h,target.z);
   const desired=new THREE.Vector3(
     target.x+Math.sin(camYaw)*cp*dist,
     target.y+h+sp*dist,
     target.z+Math.cos(camYaw)*cp*dist
   );
-  camera.position.lerp(desired,1-Math.exp(-8*dt));
-  camera.lookAt(target.x,target.y+h,target.z);
+  const safe=track.cameraSafePosition(pivot,desired,.28);
+  camera.position.lerp(safe,1-Math.exp(-12*dt));
+  camera.lookAt(pivot);
 }
 
 function bindJoystick(){

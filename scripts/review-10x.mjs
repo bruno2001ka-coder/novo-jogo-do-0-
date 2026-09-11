@@ -13,11 +13,11 @@ ok('1 núcleo modular mínimo',JSON.stringify(files)===JSON.stringify(['Profiler
 ok('2 sem sistemas antigos pesados',!/favela|pol[ií]cia|helic[oó]ptero|viatura|npc|economia|cultivo/i.test(main+track+profiler));
 ok('3 profiler técnico existe',main.includes('criarProfiler')&&profiler.includes('renderer.info')&&profiler.includes('frame p95'));
 ok('4 campo de provas funcional',track.includes('RAMPA / PLATAFORMA')&&track.includes('LOMBADA')&&track.includes('GARAGEM')&&track.includes('DEGRAUS'));
-ok('5 colisão simples com slide e posição real',track.includes('function moveXZ')&&track.includes('blocked')&&main.includes('track.moveXZ(player.position')&&main.includes('track.moveXZ(v.obj.position'));
-ok('6 terreno de teste afeta personagem e veículos',main.includes('track.groundHeight')&&main.includes('track.terrainPose'));
-ok('7 rodas continuam físicas visuais',main.includes('distance/Math.max(.05,r.raio')&&main.includes('if(r.dianteira)r.pivo.rotation.y=steerVisual'));
-ok('8 slalom usa instancing',track.includes('new THREE.InstancedMesh'));
-ok('9 render continua sem sombra/pós pesado',main.includes('renderer.shadowMap.enabled=false')&&!/EffectComposer|UnrealBloom|postprocessing/.test(main));
+ok('5 personagem usa posição real e slide',track.includes('function moveXZ')&&main.includes('track.moveXZ(player.position'));
+ok('6 veículos usam OBB rotacionado e varredura',track.includes('function obbIntersectsAABB')&&track.includes('function moveVehicle')&&main.includes('track.moveVehicle')&&main.includes('track.vehicleBlocked'));
+ok('7 moto usa contato real de duas rodas',track.includes('function twoWheelPose')&&main.includes("name==='moto'")&&main.includes('track.twoWheelPose'));
+ok('8 câmera não atravessa paredes',track.includes('function cameraSafePosition')&&main.includes('track.cameraSafePosition'));
+ok('9 rodas, instancing e render leve preservados',main.includes('distance/Math.max(.05,r.raio')&&main.includes('if(r.dianteira)r.pivo.rotation.y=steerVisual')&&track.includes('new THREE.InstancedMesh')&&main.includes('renderer.shadowMap.enabled=false')&&!/EffectComposer|UnrealBloom|postprocessing/.test(main));
 ok('10 loop principal usa a câmera correta e mantém PC/mobile/PWA',main.includes('renderer.render(scene,camera);')&&!main.includes('renderer.render(scene,camer);')&&main.includes('keys.KeyW')&&main.includes('bindJoystick()')&&main.includes("get('debug')==='1'")&&html.includes('lookZone')&&manifest.includes('"display":"fullscreen"'));
 
 console.log(JSON.stringify({ok:true,total:checks.length,checks},null,2));

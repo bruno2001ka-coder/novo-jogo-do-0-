@@ -6,7 +6,16 @@ const BUMP={x0:-3.2,x1:3.2,z0:-12,z1:-8,h:.22};
 const SIDEWALK={x0:5,x1:9,z0:-14,z1:8,h:.16};
 const STAIRS={x0:5,x1:9,z0:-24,z1:-14,step:.16};
 
+// Áreas físicas reservadas para construção. Elas ficam fora da pista de testes e
+// groundHeight() garante que permaneçam planas mesmo quando o terreno crescer.
+const FLAT_AREAS=Object.freeze([
+  Object.freeze({id:'casa',label:'ÁREA PLANA CASA',x0:-44,x1:-22,z0:24,z1:46,y:0}),
+  Object.freeze({id:'fazenda',label:'ÁREA PLANA FAZENDA',x0:22,x1:48,z0:24,z1:52,y:0}),
+  Object.freeze({id:'expansao',label:'ÁREA PLANA EXPANSÃO',x0:24,x1:50,z0:-52,z1:-26,y:0}),
+]);
+
 function inRect(x,z,r){return x>=r.x0&&x<=r.x1&&z>=r.z0&&z<=r.z1}
+function flatAreaAt(x,z){return FLAT_AREAS.find(a=>inRect(x,z,a))||null}
 function mat(color,roughness=.95){return new THREE.MeshStandardMaterial({color,roughness,metalness:0})}
 
 export function criarCampoDeProvas(scene,{debug=false}={}){
@@ -19,6 +28,52 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   const concreteMat=mat(0x9a9b93,.9);
   const rampMat=mat(0x5b5e62,.88);
   const wallMat=mat(0x8b7767,.9);
+
+  // Registro único de colisores físicos. O visual pode mudar sem alterar a física.
+  const colliders=[];
+  let nextColliderId=1;
+  const colliderDebug=new Map();
+  const debugColliderGroup=new THREE.Group();
+  debugColliderGroup.name='debugColliders';
+  if(debug)group.add(debugColliderGroup);
+
+  function addBoxCollider({cx,cz,w,d,h=2.6,y0=0,label='colisor',owner='world'}){
+    const collider={
+      id:`col-${nextColliderId++}`,
+      x0:cx-w/2,x1:cx+w/2,
+      y0,y1:y0+h,
+      z0:cz-d/2,z1:cz+d/2,
+      label,owner
+    };
+    colliders.push(collider);
+
+    if(debug){
+      const box=new THREE.Box3(
+        new THREE.Vector3(collider.x0,collider.y0,collider.z0),
+        new THREE.Vector3(collider.x1,collider.y1,collider.z1)
+      );
+      const helper=new THREE.Box3Helper(box,0xff5533);
+      helper.name=`debug-${collider.id}-${label}`;
+      debugColliderGroup.add(helper);
+      colliderDebug.set(collider.id,helper);
+    }
+    return collider;
+  }
+
+  function removeCollider(idOrCollider){
+    const id=typeof idOrCollider==='string'?idOrCollider:idOrCollider?.id;
+    const index=colliders.findIndex(c=>c.id===id);
+    if(index<0)return false;
+    colliders.splice(index,1);
+    const helper=colliderDebug.get(id);
+    if(helper){
+      helper.removeFromParent();
+      helper.geometry?.dispose?.();
+      helper.material?.dispose?.();
+      colliderDebug.delete(id);
+    }
+    return true;
+  }
 
   const ground=new THREE.Mesh(new THREE.PlaneGeometry(200,200,1,1),groundMat);
   ground.rotation.x=-Math.PI/2;
@@ -91,11 +146,11 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   }
 
   // Garagem de colisão real: frente aberta.
-  const colliders=[];
   function wall(cx,cz,w,d,h=2.6,label='parede'){
     const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),wallMat);
     mesh.position.set(cx,h/2,cz);group.add(mesh);
-    colliders.push({x0:cx-w/2,x1:cx+w/2,y0:0,y1:h,z0:cz-d/2,z1:cz+d/2,label});
+    const collider=addBoxCollider({cx,cz,w,d,h,label,owner:'test-track'});
+    mesh.userData.colliderId=collider.id;
     return mesh;
   }
   wall(-10,-58,.35,15,2.7,'garagem-esquerda');
@@ -120,9 +175,26 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   if(debug){
     const axes=new THREE.AxesHelper(3);
     axes.position.set(0,.03,22);group.add(axes);
+
+    const padMaterial=new THREE.LineBasicMaterial({color:0x55dd88});
+    for(const area of FLAT_AREAS){
+      const pts=[
+        new THREE.Vector3(area.x0,area.y+.025,area.z0),
+        new THREE.Vector3(area.x1,area.y+.025,area.z0),
+        new THREE.Vector3(area.x1,area.y+.025,area.z1),
+        new THREE.Vector3(area.x0,area.y+.025,area.z1),
+      ];
+      const geometry=new THREE.BufferGeometry().setFromPoints(pts);
+      const line=new THREE.LineLoop(geometry,padMaterial);
+      line.name=`debug-flat-${area.id}`;
+      group.add(line);
+    }
   }
 
   function groundHeight(x,z){
+    const flat=flatAreaAt(x,z);
+    if(flat)return flat.y;
+
     let h=0;
 
     if(inRect(x,z,BUMP)){
@@ -144,6 +216,43 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
       else if(z>=-23)h=Math.max(h,.48);
     }
     return h;
+  }
+
+  function terrainInfoAt(x,z){
+    const flat=flatAreaAt(x,z);
+    return{
+      height:groundHeight(x,z),
+      zone:zoneAt(x,z),
+      buildable:!!flat,
+      flatArea:flat?.id||null,
+      surface:flat?'construction-pad':'terrain',
+    };
+  }
+
+  function canPlaceRect(cx,cz,w,d,padding=.25){
+    const area=flatAreaAt(cx,cz);
+    if(!area)return{ok:false,reason:'fora-de-area-plana'};
+
+    const x0=cx-w/2-padding,x1=cx+w/2+padding;
+    const z0=cz-d/2-padding,z1=cz+d/2+padding;
+    if(x0<area.x0||x1>area.x1||z0<area.z0||z1>area.z1){
+      return{ok:false,reason:'fora-dos-limites',area:area.id};
+    }
+
+    for(const c of colliders){
+      if(x1>c.x0&&x0<c.x1&&z1>c.z0&&z0<c.z1){
+        return{ok:false,reason:'colisor',collider:c.id,label:c.label,area:area.id};
+      }
+    }
+
+    const heights=[
+      groundHeight(x0,z0),groundHeight(x1,z0),
+      groundHeight(x0,z1),groundHeight(x1,z1)
+    ];
+    const delta=Math.max(...heights)-Math.min(...heights);
+    if(delta>.02)return{ok:false,reason:'terreno-nao-plano',delta,area:area.id};
+
+    return{ok:true,y:groundHeight(cx,cz),area:area.id};
   }
 
   function blocked(x,z,radius){
@@ -292,6 +401,8 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   }
 
   function zoneAt(x,z){
+    const flat=flatAreaAt(x,z);
+    if(flat)return flat.label;
     if(x>=-11&&x<=-3&&z<=-49&&z>=-67)return'GARAGEM';
     if(x>=3&&x<=11&&z<=-45&&z>=-51)return'IMPACTO / PAREDE';
     if(x>=RAMP.x0&&x<=RAMP.x1&&z<=-22&&z>=-44)return'RAMPA / PLATAFORMA';
@@ -375,6 +486,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
 
   return{
     group,colliders,groundHeight,moveXZ,moveVehicle,zoneAt,
-    terrainPose,twoWheelPose,cameraSafePosition,vehicleBlocked:blockedOBB,vehicleTurnAllowed,limit:LIMIT
+    terrainPose,twoWheelPose,cameraSafePosition,vehicleBlocked:blockedOBB,vehicleTurnAllowed,limit:LIMIT,
+    flatAreas:FLAT_AREAS,terrainInfoAt,canPlaceRect,addBoxCollider,removeCollider
   };
 }

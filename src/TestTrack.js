@@ -28,6 +28,10 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   const concreteMat=mat(0x9a9b93,.9);
   const rampMat=mat(0x5b5e62,.88);
   const wallMat=mat(0x8b7767,.9);
+  const houseMat=mat(0xd1c0a6,.92);
+  const roofMat=mat(0x6b5040,.9);
+  const woodMat=mat(0x68472e,.9);
+  const pathMat=mat(0x817a70,.96);
 
   // Registro único de colisores físicos. O visual pode mudar sem alterar a física.
   const colliders=[];
@@ -171,6 +175,159 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     cones.setMatrixAt(i,dummy.matrix);
   }
   cones.instanceMatrix.needsUpdate=true;group.add(cones);
+
+  // ---------------------------------------------------------------------------
+  // PRIMEIRA ÁREA REAL DO MUNDO: CASA + ACESSO + PORTEIRA
+  // Mantém visual e colisão separados. Ainda não existe cerca perimetral para
+  // garantir que a entrada nunca fique bloqueada por um trecho de cerca.
+  // ---------------------------------------------------------------------------
+  const houseGroup=new THREE.Group();
+  houseGroup.name='areaCasa';
+  group.add(houseGroup);
+
+  function houseSolid(cx,cz,w,d,h,label){
+    const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),houseMat);
+    mesh.position.set(cx,h/2,cz);
+    houseGroup.add(mesh);
+    const collider=addBoxCollider({cx,cz,w,d,h,label,owner:'casa'});
+    mesh.userData.colliderId=collider.id;
+    return mesh;
+  }
+
+  // Acesso largo o suficiente para carro e moto, ligado ao final da pista.
+  const driveway=new THREE.Mesh(new THREE.BoxGeometry(32.4,.045,5),pathMat);
+  driveway.position.set(-26,.0225,25.5);
+  driveway.name='acessoCasa';
+  houseGroup.add(driveway);
+
+  // Casa simples e funcional. O vão da porta frontal permanece sem colisor.
+  const HOUSE={cx:-35,cz:36,w:13,d:9.5,h:2.8,t:.28,doorW:1.6};
+  const hx0=HOUSE.cx-HOUSE.w/2,hx1=HOUSE.cx+HOUSE.w/2;
+  const hz0=HOUSE.cz-HOUSE.d/2,hz1=HOUSE.cz+HOUSE.d/2;
+
+  houseSolid(hx0,HOUSE.cz,HOUSE.t,HOUSE.d,HOUSE.h,'casa-oeste');
+  houseSolid(hx1,HOUSE.cz,HOUSE.t,HOUSE.d,HOUSE.h,'casa-leste');
+  houseSolid(HOUSE.cx,hz1,HOUSE.w,HOUSE.t,HOUSE.h,'casa-fundo');
+
+  const frontLeftW=(HOUSE.w-HOUSE.doorW)/2;
+  const frontRightW=frontLeftW;
+  houseSolid(
+    hx0+frontLeftW/2,
+    hz0,
+    frontLeftW,
+    HOUSE.t,
+    HOUSE.h,
+    'casa-frente-esquerda'
+  );
+  houseSolid(
+    hx1-frontRightW/2,
+    hz0,
+    frontRightW,
+    HOUSE.t,
+    HOUSE.h,
+    'casa-frente-direita'
+  );
+
+  const floorMesh=new THREE.Mesh(
+    new THREE.PlaneGeometry(HOUSE.w-.35,HOUSE.d-.35),
+    concreteMat
+  );
+  floorMesh.rotation.x=-Math.PI/2;
+  floorMesh.position.set(HOUSE.cx,.018,HOUSE.cz);
+  floorMesh.name='pisoCasa';
+  houseGroup.add(floorMesh);
+
+  // Telhado grosso com beiral. É apenas visual para não criar um colisor 2D
+  // cobrindo todo o interior da casa.
+  const roof=new THREE.Mesh(
+    new THREE.BoxGeometry(HOUSE.w+.7,.42,HOUSE.d+.7),
+    roofMat
+  );
+  roof.position.set(HOUSE.cx,HOUSE.h+.21,HOUSE.cz);
+  roof.name='telhadoCasa';
+  houseGroup.add(roof);
+
+  // Caminho de pedestre da garagem/entrada até o vão da porta frontal.
+  const footPath=new THREE.Mesh(new THREE.BoxGeometry(2.2,.035,4.1),pathMat);
+  footPath.position.set(HOUSE.cx,.0175,29.2);
+  footPath.name='caminhoPortaCasa';
+  houseGroup.add(footPath);
+
+  // Porteira de uma folha: abre para dentro do lote e deixa a faixa inteira livre.
+  const GATE={x:-23.4,z0:23.0,width:5.0,height:1.45};
+  function gatePost(z){
+    const post=new THREE.Mesh(new THREE.BoxGeometry(.3,1.9,.3),woodMat);
+    post.position.set(GATE.x,.95,z);
+    houseGroup.add(post);
+    const collider=addBoxCollider({
+      cx:GATE.x,cz:z,w:.3,d:.3,h:1.9,
+      label:'poste-porteira',owner:'casa'
+    });
+    post.userData.colliderId=collider.id;
+  }
+  gatePost(GATE.z0-.2);
+  gatePost(GATE.z0+GATE.width+.2);
+
+  const gatePivot=new THREE.Group();
+  gatePivot.name='porteiraPivot';
+  gatePivot.position.set(GATE.x,0,GATE.z0);
+  houseGroup.add(gatePivot);
+
+  const gateLeaf=new THREE.Group();
+  gateLeaf.name='porteiraFolha';
+  gatePivot.add(gateLeaf);
+  for(const y of[.38,.78,1.18]){
+    const rail=new THREE.Mesh(new THREE.BoxGeometry(.12,.14,GATE.width),woodMat);
+    rail.position.set(0,y,GATE.width/2);
+    gateLeaf.add(rail);
+  }
+  for(const z of[.12,GATE.width-.12]){
+    const stile=new THREE.Mesh(new THREE.BoxGeometry(.14,1.35,.14),woodMat);
+    stile.position.set(0,.72,z);
+    gateLeaf.add(stile);
+  }
+
+  let gateCollider=addBoxCollider({
+    cx:GATE.x,cz:GATE.z0+GATE.width/2,
+    w:.22,d:GATE.width,h:GATE.height,
+    label:'porteira-fechada',owner:'casa'
+  });
+  const gateState={angle:0,target:0};
+
+  function updateGate(dt,targetPosition){
+    if(!targetPosition)return;
+    const gateCenterZ=GATE.z0+GATE.width/2;
+    const distance=Math.hypot(targetPosition.x-GATE.x,targetPosition.z-gateCenterZ);
+
+    if(distance<6.5)gateState.target=-Math.PI/2;
+    else if(distance>8.5)gateState.target=0;
+
+    // Ao começar a abrir, remove a barreira física imediatamente.
+    if(gateState.target!==0&&gateCollider){
+      removeCollider(gateCollider);
+      gateCollider=null;
+    }
+
+    gateState.angle=THREE.MathUtils.lerp(
+      gateState.angle,
+      gateState.target,
+      1-Math.exp(-5.5*dt)
+    );
+
+    if(Math.abs(gateState.angle-gateState.target)<.002){
+      gateState.angle=gateState.target;
+    }
+    gatePivot.rotation.y=gateState.angle;
+
+    // O colisor volta somente quando a porteira terminou de fechar.
+    if(gateState.target===0&&Math.abs(gateState.angle)<.025&&!gateCollider){
+      gateCollider=addBoxCollider({
+        cx:GATE.x,cz:GATE.z0+GATE.width/2,
+        w:.22,d:GATE.width,h:GATE.height,
+        label:'porteira-fechada',owner:'casa'
+      });
+    }
+  }
 
   if(debug){
     const axes=new THREE.AxesHelper(3);
@@ -454,6 +611,10 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     };
   }
 
+  function updateWorld(dt,targetPosition){
+    updateGate(dt,targetPosition);
+  }
+
   // Evita que uma parede fique entre a câmera e o alvo.
   function cameraSafePosition(start,end,padding=.25){
     const dx=end.x-start.x,dy=end.y-start.y,dz=end.z-start.z;
@@ -487,6 +648,6 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   return{
     group,colliders,groundHeight,moveXZ,moveVehicle,zoneAt,
     terrainPose,twoWheelPose,cameraSafePosition,vehicleBlocked:blockedOBB,vehicleTurnAllowed,limit:LIMIT,
-    flatAreas:FLAT_AREAS,terrainInfoAt,canPlaceRect,addBoxCollider,removeCollider
+    flatAreas:FLAT_AREAS,terrainInfoAt,canPlaceRect,addBoxCollider,removeCollider,updateWorld
   };
 }

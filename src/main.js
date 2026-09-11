@@ -738,6 +738,9 @@ function simulate(dt){
   }else{
     drive(dt,vehicles[mode],mode);
   }
+
+  // Sistemas dinâmicos do cenário (ex.: porteira), separados da física dos atores.
+  track.updateWorld?.(dt,activeTarget().position);
 }
 
 function frame(now){

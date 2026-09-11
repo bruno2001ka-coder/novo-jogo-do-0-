@@ -293,13 +293,100 @@ function restoreCharacterTransform(){
   character.model.rotation.y=0;
 }
 
+function exitSpotBlocked(x,z,radius=.38){
+  const limit=track.limit??96;
+  if(
+    x-radius<-limit||x+radius>limit||
+    z-radius<-limit||z+radius>limit
+  )return true;
+
+  // Parede, muro, portão, pilar, móvel grande etc.
+  for(const a of track.colliders){
+    if(
+      x+radius>a.x0&&x-radius<a.x1&&
+      z+radius>a.z0&&z-radius<a.z1
+    )return true;
+  }
+
+  // Evita materializar o personagem dentro da moto ou do carro.
+  for(const v of Object.values(vehicles)){
+    const yaw=v.obj.rotation.y;
+    const fx=-Math.sin(yaw),fz=-Math.cos(yaw);
+    const rx=Math.cos(yaw),rz=-Math.sin(yaw);
+    const dx=x-v.obj.position.x,dz=z-v.obj.position.z;
+    const longitudinal=Math.abs(dx*fx+dz*fz);
+    const lateral=Math.abs(dx*rx+dz*rz);
+
+    if(
+      longitudinal<v.halfLength+radius+.12&&
+      lateral<v.halfWidth+radius+.12
+    )return true;
+  }
+
+  // Não escolhe borda/degrau que deixaria o personagem parcialmente suspenso.
+  const heights=[
+    track.groundHeight(x,z),
+    track.groundHeight(x+radius,z),
+    track.groundHeight(x-radius,z),
+    track.groundHeight(x,z+radius),
+    track.groundHeight(x,z-radius)
+  ];
+  return Math.max(...heights)-Math.min(...heights)>.30;
+}
+
+function findSafeVehicleExit(v){
+  const yaw=v.obj.rotation.y;
+  const fx=-Math.sin(yaw),fz=-Math.cos(yaw);
+  const rx=Math.cos(yaw),rz=-Math.sin(yaw);
+
+  const lateral=v.halfWidth+.78;
+  const longitudinal=v.halfLength+.72;
+
+  // Prioridade natural: direita, esquerda, traseira, frente e diagonais.
+  // Se a parede estiver de um lado, o algoritmo automaticamente tenta o outro.
+  const offsets=[
+    [ rx*lateral, rz*lateral],
+    [-rx*lateral,-rz*lateral],
+    [-fx*longitudinal,-fz*longitudinal],
+    [ fx*longitudinal, fz*longitudinal],
+
+    [ rx*lateral-fx*longitudinal*.62, rz*lateral-fz*longitudinal*.62],
+    [-rx*lateral-fx*longitudinal*.62,-rz*lateral-fz*longitudinal*.62],
+    [ rx*lateral+fx*longitudinal*.62, rz*lateral+fz*longitudinal*.62],
+    [-rx*lateral+fx*longitudinal*.62,-rz*lateral+fz*longitudinal*.62],
+
+    [ rx*lateral*1.35, rz*lateral*1.35],
+    [-rx*lateral*1.35,-rz*lateral*1.35],
+    [-fx*longitudinal*1.30,-fz*longitudinal*1.30],
+    [ fx*longitudinal*1.30, fz*longitudinal*1.30]
+  ];
+
+  for(const [ox,oz] of offsets){
+    const x=v.obj.position.x+ox;
+    const z=v.obj.position.z+oz;
+    if(exitSpotBlocked(x,z))continue;
+
+    return new THREE.Vector3(
+      x,
+      track.groundHeight(x,z),
+      z
+    );
+  }
+
+  return null;
+}
+
 function exitVehicle(){
   if(mode==='foot')return;
   const v=vehicles[mode];
-  const side=new THREE.Vector3(1.7,0,0).applyAxisAngle(new THREE.Vector3(0,1,0),v.obj.rotation.y);
-  player.position.copy(v.obj.position).add(side);
-  player.position.y=track.groundHeight(player.position.x,player.position.z);
-  player.rotation.x=0;player.rotation.z=0;
+  const safeExit=findSafeVehicleExit(v);
+
+  // Sem espaço seguro: permanece no veículo em vez de projetar o personagem
+  // para dentro de parede, muro, portão ou outro objeto.
+  if(!safeExit)return;
+
+  player.position.copy(safeExit);
+  player.rotation.set(0,v.obj.rotation.y,0);
   player.visible=true;restoreCharacterTransform();
   locomotion.vx=0;locomotion.vz=0;velY=0;locomotion.grounded=true;locomotion.coyote=.1;
   mode='foot';document.body.classList.remove('driving');snapRenderStates();

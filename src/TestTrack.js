@@ -206,6 +206,26 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     return true;
   }
 
+  // Girar também varre volume e apoios. Evita que a quina da carroceria corte
+  // parede/limite ou que uma roda "caia" de repente para outro nível só por esterçar.
+  function vehicleTurnAllowed(x,z,fromYaw,toYaw,halfLength,halfWidth,maxStep,twoWheel=false){
+    const delta=Math.atan2(Math.sin(toYaw-fromYaw),Math.cos(toYaw-fromYaw));
+    const steps=Math.max(1,Math.ceil(Math.abs(delta)/THREE.MathUtils.degToRad(2)));
+    let yaw=fromYaw;
+    let contacts=vehicleContacts(x,z,yaw,halfLength,halfWidth,twoWheel);
+
+    for(let i=1;i<=steps;i++){
+      const nextYaw=fromYaw+delta*(i/steps);
+      if(blockedOBB(x,z,nextYaw,halfLength,halfWidth))return false;
+      const next=vehicleContacts(x,z,nextYaw,halfLength,halfWidth,twoWheel);
+      for(let k=0;k<contacts.length;k++){
+        if(Math.abs(next[k]-contacts[k])>maxStep+.001)return false;
+      }
+      contacts=next;yaw=nextYaw;
+    }
+    return true;
+  }
+
   function canStep(fromX,fromZ,toX,toZ,maxStep){
     return Math.abs(groundHeight(toX,toZ)-groundHeight(fromX,fromZ))<=maxStep+.001;
   }
@@ -278,17 +298,32 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   }
 
   function terrainPose(x,z,yaw,halfLength,halfWidth){
-    const fX=-Math.sin(yaw),fZ=-Math.cos(yaw);
-    const rX=Math.cos(yaw),rZ=-Math.sin(yaw);
-    const hF=groundHeight(x+fX*halfLength,z+fZ*halfLength);
-    const hB=groundHeight(x-fX*halfLength,z-fZ*halfLength);
-    const hR=groundHeight(x+rX*halfWidth,z+rZ*halfWidth);
-    const hL=groundHeight(x-rX*halfWidth,z-rZ*halfWidth);
-    return{
-      y:(hF+hB+hR+hL)/4,
-      pitch:Math.atan2(hF-hB,Math.max(.01,halfLength*2)),
-      roll:Math.atan2(hR-hL,Math.max(.01,halfWidth*2)),
-    };
+    const contacts=vehicleContacts(x,z,yaw,halfLength,halfWidth,false);
+    const[hFR,hFL,hBR,hBL]=contacts;
+    const hF=(hFR+hFL)/2,hB=(hBR+hBL)/2;
+    const hR=(hFR+hBR)/2,hL=(hFL+hBL)/2;
+
+    // Plano rígido aproximado pelos eixos longitudinal/lateral.
+    const slopeF=(hF-hB)/Math.max(.01,halfLength*2);
+    const slopeR=(hR-hL)/Math.max(.01,halfWidth*2);
+    const pitch=Math.atan(slopeF);
+    const roll=Math.atan(slopeR);
+
+    // Em terreno descontínuo (borda/degrau), média simples enterra parte do carro.
+    // Escolhe a menor altura do centro que mantém todos os quatro cantos acima do chão.
+    const supports=[
+      {h:hFR,s: halfLength,t: halfWidth},
+      {h:hFL,s: halfLength,t:-halfWidth},
+      {h:hBR,s:-halfLength,t: halfWidth},
+      {h:hBL,s:-halfLength,t:-halfWidth},
+    ];
+    let y=-Infinity;
+    for(const p of supports){
+      y=Math.max(y,p.h-slopeF*p.s-slopeR*p.t);
+    }
+    if(!Number.isFinite(y))y=0;
+
+    return{y,pitch,roll};
   }
 
   // Moto: dois contatos reais, um em cada roda. Não usa quatro cantos como um carro.
@@ -335,6 +370,6 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
 
   return{
     group,colliders,groundHeight,moveXZ,moveVehicle,zoneAt,
-    terrainPose,twoWheelPose,cameraSafePosition,vehicleBlocked:blockedOBB,limit:LIMIT
+    terrainPose,twoWheelPose,cameraSafePosition,vehicleBlocked:blockedOBB,vehicleTurnAllowed,limit:LIMIT
   };
 }

@@ -498,10 +498,14 @@ function drive(dt,v,name){
   const dyaw=bicycleYawDelta(v.speed,wheelAngle,v.wheelBase,dt);
   if(Math.abs(dyaw)>1e-6){
     const candidateYaw=v.obj.rotation.y+dyaw;
-    if(!track.vehicleBlocked(v.obj.position.x,v.obj.position.z,candidateYaw,v.halfLength,v.halfWidth)){
+    if(track.vehicleTurnAllowed(
+      v.obj.position.x,v.obj.position.z,v.obj.rotation.y,candidateYaw,
+      v.halfLength,v.halfWidth,v.maxStep,name==='moto'
+    )){
       v.obj.rotation.y=candidateYaw;
     }else{
       v.speed*=.72;
+      v.steerState=approach(v.steerState,0,v.steerResponse*1.5*dt);
     }
   }
 

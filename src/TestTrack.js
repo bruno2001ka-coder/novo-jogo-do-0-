@@ -252,6 +252,14 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
         `eixo-${id}`,.067,segments,closed
       );
     }
+    if(line&&!isDirt){
+      pathBand(points,-width/2+.16,-width/2+.22,roadLineMat,`borda-${id}-esquerda`,.068,segments,closed);
+      pathBand(points,width/2-.22,width/2-.16,roadLineMat,`borda-${id}-direita`,.068,segments,closed);
+    }
+    if(line&&!isDirt){
+      pathBand(points,-width/2+.16,-width/2+.22,roadLineMat,`borda-${id}-esquerda`,.068,segments,closed);
+      pathBand(points,width/2-.22,width/2-.16,roadLineMat,`borda-${id}-direita`,.068,segments,closed);
+    }
   }
 
   // Centro urbano compacto. Fora desse anel começam as estradas rurais.
@@ -646,6 +654,46 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     });
   }
 
+  // Detalhes de rua calculados a partir da geometria validada, sem adicionar colisores.
+  const streetDetailGroup=new THREE.Group();
+  streetDetailGroup.name='detalhesRua';
+  roadGroup.add(streetDetailGroup);
+  const poleMat=mat(0x3f4647,.75),lampMat=mat(0xf4e6b0,.35);
+  const treeTrunkMat=mat(0x654832,.98),treeLeafMat=mat(0x2f6338,.96);
+  const detailDummy=new THREE.Object3D();
+  const poleGeo=new THREE.CylinderGeometry(.055,.075,4.2,8),lampGeo=new THREE.SphereGeometry(.16,8,6);
+  const trunkGeo=new THREE.CylinderGeometry(.10,.14,1.2,7),leafGeo=new THREE.ConeGeometry(.75,1.8,8);
+  const poles=new THREE.InstancedMesh(poleGeo,poleMat,48),lamps=new THREE.InstancedMesh(lampGeo,lampMat,48);
+  const trees=new THREE.InstancedMesh(leafGeo,treeLeafMat,70),trunks=new THREE.InstancedMesh(trunkGeo,treeTrunkMat,70);
+  let poleCount=0,treeCount=0;
+  for(const road of roadNetwork){
+    const curve=curveFromXZ(road.points,road.closed),pts=sampleRoad(road);
+    if(road.type==='asfalto'&&poleCount<48){
+      for(let i=8;i<pts.length-4&&poleCount<48;i+=Math.max(8,Math.floor(pts.length/18))){
+        const p=pts[i],t=curve.getTangent(i/(pts.length-1)).normalize(),side=i%2?-1:1,nx=t.z*side,nz=-t.x*side;
+        detailDummy.position.set(p.x+nx*6.2,2.1,p.z+nz*6.2);detailDummy.scale.set(1,1,1);detailDummy.updateMatrix();poles.setMatrixAt(poleCount,detailDummy.matrix);
+        detailDummy.position.y=4.25;detailDummy.updateMatrix();lamps.setMatrixAt(poleCount,detailDummy.matrix);poleCount++;
+      }
+    }
+    if(treeCount<70){
+      for(let i=5;i<pts.length-2&&treeCount<70;i+=Math.max(12,Math.floor(pts.length/10))){
+        const p=pts[i],t=curve.getTangent(i/(pts.length-1)).normalize(),side=i%2?-1:1,nx=t.z*side,nz=-t.x*side,off=road.type==='terra'?7.5:10.5;
+        detailDummy.position.set(p.x+nx*off,.6,p.z+nz*off);detailDummy.scale.setScalar(.8+(treeCount%3)*.12);detailDummy.updateMatrix();trunks.setMatrixAt(treeCount,detailDummy.matrix);
+        detailDummy.position.y=1.9;detailDummy.updateMatrix();trees.setMatrixAt(treeCount,detailDummy.matrix);treeCount++;
+      }
+    }
+  }
+  poles.count=poleCount;lamps.count=poleCount;trees.count=treeCount;trunks.count=treeCount;
+  poles.instanceMatrix.needsUpdate=true;lamps.instanceMatrix.needsUpdate=true;trees.instanceMatrix.needsUpdate=true;trunks.instanceMatrix.needsUpdate=true;
+  streetDetailGroup.add(poles,lamps,trees,trunks);
+  const crosswalkMat=mat(0xf1eee2,.86);
+  for(const j of ROAD_JUNCTIONS){
+    if(j.surface!=='asfalto')continue;
+    for(let k=-2;k<=2;k++){
+      const stripe=new THREE.Mesh(new THREE.BoxGeometry(.42,.012,5.8),crosswalkMat);
+      stripe.position.set(j.x+k*.72,.091,j.z+6.5);stripe.name='faixa-'+j.id;roadGroup.add(stripe);
+    }
+  }
   // Cruzamentos asfaltados cobrem somente encontros urbanos.
   // Bifurcações rurais recebem piso de terra, nunca uma mancha preta em cima da estrada.
   for(const j of ROAD_JUNCTIONS){

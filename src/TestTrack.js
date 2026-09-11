@@ -388,14 +388,15 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     roofMat,'cumeeiraTelhado'
   );
 
-  // Oitões sólidos agora ficam nas duas laterais, alinhados ao novo telhado.
+  // Oitões pertencem às extremidades da cumeeira: frente e fundo.
+  // Como a cumeeira corre no eixo Z, NÃO podem ficar nas laterais X.
   const gableMat=houseMat.clone();
   gableMat.side=THREE.DoubleSide;
 
-  function addSideGable(x,name,side){
+  function addFrontBackGable(z,name){
     const shape=new THREE.Shape();
-    shape.moveTo(-HOUSE.d/2,0);
-    shape.lineTo(HOUSE.d/2,0);
+    shape.moveTo(-HOUSE.w/2,0);
+    shape.lineTo(HOUSE.w/2,0);
     shape.lineTo(0,roofRise+.02);
     shape.closePath();
 
@@ -408,18 +409,17 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     geometry.computeVertexNormals();
 
     const mesh=new THREE.Mesh(geometry,gableMat);
-    mesh.rotation.y=Math.PI/2;
     mesh.position.set(
-      x-side*.12,
+      HOUSE.cx,
       HOUSE.h,
-      HOUSE.cz
+      z-.12
     );
     mesh.name=name;
     houseGroup.add(mesh);
   }
 
-  addSideGable(hx0,'oitaoLateralOeste',-1);
-  addSideGable(hx1,'oitaoLateralLeste',1);
+  addFrontBackGable(hz0,'oitaoFrontal');
+  addFrontBackGable(hz1,'oitaoTraseiro');
 
   // VARANDA FRONTAL RÚSTICA.
   const verandaDepth=2.45;

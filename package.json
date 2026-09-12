@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check src/main.js && node --check src/GamePhysics.js && node --check src/Rodas.js && node --check src/TestTrack.js && node --check src/Profiler.js && node scripts/review-10x.mjs && node scripts/physics-tests.mjs",
-    "test": "node scripts/review-10x.mjs && node scripts/physics-tests.mjs"
+    "check": "node scripts/check.mjs",
+    "test": "node scripts/check.mjs",
+    "build": "node scripts/build.mjs"
   }
 }

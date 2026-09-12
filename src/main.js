@@ -3,58 +3,69 @@ import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
 import{separarRodas}from'./Rodas.js';
 import{criarCampoDeProvas}from'./TestTrack.js';
 import{criarProfiler}from'./Profiler.js';
+import {BUILD,SPAWN} from './WorldLayout.js';
+import {createMaterials} from './WorldVisuals.js';
 import{FIXED_DT,MAX_PHYSICS_STEPS,approach,expAlpha,integrateVehicleSpeed,steeringAngle,bicycleYawRate,stabilizeYawRate,stabilizeAttitude,groundClampY,planarApproach}from'./GamePhysics.js';
 
 const $=id=>document.getElementById(id);
 const mobile=matchMedia('(pointer:coarse)').matches||innerWidth<900;
 const debug=new URLSearchParams(location.search).get('debug')==='1';
+const qa=new URLSearchParams(location.search).get('qa')==='1';
+const assetErrors=[];
+const assetManager=new THREE.LoadingManager();
+const assetsReady=new Promise(resolve=>{assetManager.onLoad=resolve});
+assetManager.onError=url=>{assetErrors.push(url);$('modelStatus').textContent='Falha no carregamento. Recarregue a pagina.'};
 if(mobile)document.documentElement.classList.add('mobile');
 if(debug)document.body.classList.add('debug');
 
 const scene=new THREE.Scene();
-scene.background=new THREE.Color(0x9fc2da);
-scene.fog=new THREE.Fog(0x9fc2da,320,980);
+scene.background=new THREE.Color(0xb4d4e8);
+scene.fog=new THREE.Fog(0xb4d4e8,240,820);
 
 const camera=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.1,1300);
 const renderer=new THREE.WebGLRenderer({antialias:!mobile,powerPreference:'high-performance'});
-renderer.setPixelRatio(mobile?1:Math.min(devicePixelRatio||1,1.25));
+renderer.setPixelRatio(mobile?Math.min(devicePixelRatio||1,1.25):Math.min(devicePixelRatio||1,1.75));
 renderer.setSize(innerWidth,innerHeight);
 renderer.outputColorSpace=THREE.SRGBColorSpace;
 renderer.toneMapping=THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure=1.05;
-renderer.shadowMap.enabled=false;
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 document.body.prepend(renderer.domElement);
 
-scene.add(new THREE.HemisphereLight(0xddeeff,0x506044,2));
-const sun=new THREE.DirectionalLight(0xffffff,2);
-sun.position.set(35,55,20);scene.add(sun);
+scene.add(new THREE.HemisphereLight(0xdcecff,0x766b52,1.35));
+const sun=new THREE.DirectionalLight(0xfff0d9,2.7);
+sun.position.set(35,55,20);sun.castShadow=true;
+sun.shadow.mapSize.setScalar(mobile?1024:2048);
+Object.assign(sun.shadow.camera,{left:-42,right:42,top:42,bottom:-42,near:1,far:160});
+sun.shadow.bias=-.00015;sun.shadow.normalBias=.025;
+scene.add(sun,sun.target);
+const materials=createMaterials(assetManager,Math.min(8,renderer.capabilities.getMaxAnisotropy()));
+// A low-resolution sky environment supplies coherent reflections on the vehicles.
+const envScene=new THREE.Scene();envScene.background=new THREE.Color(0xb4d4e8);
+const envGround=new THREE.Mesh(new THREE.PlaneGeometry(200,200),new THREE.MeshBasicMaterial({color:0x69785d}));
+envGround.rotation.x=-Math.PI/2;envGround.position.y=-10;envScene.add(envGround);
+const pmrem=new THREE.PMREMGenerator(renderer);
+scene.environment=pmrem.fromScene(envScene,.025,.1,200).texture;
+pmrem.dispose();envGround.geometry.dispose();envGround.material.dispose();
 
 let track;
 try{
-  track=criarCampoDeProvas(scene,{debug});
+  track=criarCampoDeProvas(scene,{debug,mobile,materials});
 }catch(error){
   console.error('Falha ao montar detalhes do mapa:',error);
-  const empty=()=>0;
-  const emptyMove=(position,dx,dz)=>{position.x+=dx;position.z+=dz;return{x:dx,z:dz,blocked:false}};
-  track={
-    colliders:[],groundHeight:empty,moveXZ:emptyMove,moveVehicle:emptyMove,
-    zoneAt:()=> 'MUNDO',terrainPose:()=>({y:0,pitch:0,roll:0}),
-    twoWheelPose:()=>({y:0,pitch:0,roll:0}),cameraSafePosition:(_a,b)=>b.clone(),
-    vehicleBlocked:()=>false,vehicleTurnAllowed:()=>true,limit:500,worldSize:1000,
-    flatAreas:[],roadNetwork:[],roadLayoutAudit:{ok:false},terrainInfoAt:()=>({height:0,zone:'MUNDO'}),
-    canPlaceRect:()=>({ok:false,reason:'mapa-em-carregamento'}),addBoxCollider:()=>null,
-    removeCollider:()=>false,updateWorld:()=>{}
-  };
+  $('modelStatus').textContent='Falha ao montar o mapa. Recarregue a pagina.';
+  throw error;
 }
 
-const RAW='https://raw.githubusercontent.com/bruno2001ka-coder/cloude-jogo-/main/assets/';
+const RAW=new URL('../assets/',import.meta.url).href;
 const URLS={
   personagem:RAW+'personagem.glb',
   pilotando:RAW+'pilotando.glb',
   moto:RAW+'moto.glb',
   carro:RAW+'carro.glb'
 };
-const loader=new GLTFLoader();
+const loader=new GLTFLoader(assetManager);
 
 function material(c){return new THREE.MeshStandardMaterial({color:c,roughness:.72,metalness:.12})}
 
@@ -113,7 +124,7 @@ function normalize(obj,{height=null,length=null,modelYaw=-Math.PI/2}={}){
   obj.scale.setScalar(scale);obj.rotation.y=modelYaw;obj.updateMatrixWorld(true);
   const b2=new THREE.Box3().setFromObject(obj),center=b2.getCenter(new THREE.Vector3());
   obj.position.x-=center.x;obj.position.z-=center.z;obj.position.y-=b2.min.y;
-  obj.traverse(o=>{if(o.isMesh){o.frustumCulled=true;o.castShadow=false;o.receiveShadow=false}});
+  obj.traverse(o=>{if(o.isMesh){o.frustumCulled=true;o.castShadow=true;o.receiveShadow=true}});
   return obj;
 }
 
@@ -122,7 +133,6 @@ player.rotation.order='YXZ';
 bike.rotation.order='YXZ';
 car.rotation.order='YXZ';
 scene.add(player,bike,car);
-const SPAWN={player:{x:0,z:22},moto:{x:3.2,z:22},car:{x:-3.2,z:22}};
 player.position.set(SPAWN.player.x,track.groundHeight(SPAWN.player.x,SPAWN.player.z),SPAWN.player.z);
 bike.position.set(SPAWN.moto.x,track.groundHeight(SPAWN.moto.x,SPAWN.moto.z),SPAWN.moto.z);
 car.position.set(SPAWN.car.x,track.groundHeight(SPAWN.car.x,SPAWN.car.z),SPAWN.car.z);
@@ -213,6 +223,7 @@ function loadCharacter(){
     let finished=false;
     const done=(model,gltf=null)=>{
       if(finished)return;finished=true;
+      if(!gltf)assetErrors.push('personagem');
       normalize(model,{height:1.75,modelYaw:0});
       player.add(model);character.model=model;character.basePos.copy(model.position);
       character.fallbackRig=model.userData.fallbackRig||null;
@@ -235,7 +246,7 @@ function loadCharacter(){
       }
       character.ready=true;resolve();
     };
-    const timer=setTimeout(()=>done(fallbackPerson()),10000);
+    const timer=setTimeout(()=>done(fallbackPerson()),30000);
     loader.load(URLS.personagem,g=>{
       clearTimeout(timer);done(g.scene,g);
     },undefined,()=>{
@@ -250,6 +261,7 @@ function loadVehicle(name,url,fallback,opts,wheelCount){
     let finished=false;
     const done=(model,isFallback=false)=>{
       if(finished)return;finished=true;
+      if(isFallback)assetErrors.push(name);
       normalize(model,opts);
       v.obj.add(model);
       if(isFallback)v.wheels=model.userData.fallbackWheels||null;
@@ -259,7 +271,7 @@ function loadVehicle(name,url,fallback,opts,wheelCount){
       }
       resolve();
     };
-    const timer=setTimeout(()=>done(fallback(),true),10000);
+    const timer=setTimeout(()=>done(fallback(),true),30000);
     loader.load(url,g=>{clearTimeout(timer);done(g.scene,false)},undefined,()=>{
       clearTimeout(timer);done(fallback(),true);
     });
@@ -269,20 +281,26 @@ function loadVehicle(name,url,fallback,opts,wheelCount){
 Promise.all([
   loadCharacter(),
   loadVehicle('moto',URLS.moto,fallbackMoto,{length:2.25,modelYaw:-Math.PI/2},2),
-  loadVehicle('car',URLS.carro,fallbackCar,{length:4.2,modelYaw:-Math.PI/2},4)
+  loadVehicle('car',URLS.carro,fallbackCar,{length:4.2,modelYaw:-Math.PI/2},4),
+  assetsReady
 ]).then(()=>{
   const cw=vehicles.car.wheels?.length||0,mw=vehicles.moto.wheels?.length||0;
-  $('modelStatus').textContent=`3/3 modelos · rodas carro ${cw}/4 · moto ${mw}/2`;
+  if(assetErrors.length){$('modelStatus').textContent='Falha nos arquivos do jogo. Recarregue a pagina.';$('playBtn').textContent='FALHA AO CARREGAR';return;}
+  $('modelStatus').textContent=`Bairro do Campo · ${BUILD}`;
+  $('playBtn').disabled=false;$('playBtn').textContent='JOGAR';
+  document.body.dataset.build=BUILD;
+  document.body.dataset.assets='ready';
 });
 
 const keys=Object.create(null);
-let jumpRequest=false,velY=0,mode='foot',camYaw=0,camPitch=.25;
+let jumpRequest=false,velY=0,mode='foot',camYaw=1.8,camPitch=.28;
 const locomotion={vx:0,vz:0,grounded:true,coyote:.1,jumpBuffer:0};
 let characterMotion={moving:false,running:false,speed:0};
 const joy={x:0,y:0},look={active:false,id:null,x:0,y:0};
 
 addEventListener('keydown',e=>{
   keys[e.code]=true;
+  if(e.repeat)return;
   if(e.code==='Space'){jumpRequest=true;e.preventDefault()}
   if(e.code==='KeyM')toggleVehicle('moto');
   if(e.code==='KeyV')toggleVehicle('car');
@@ -290,9 +308,21 @@ addEventListener('keydown',e=>{
   if(e.code==='KeyR')reset();
 });
 addEventListener('keyup',e=>{keys[e.code]=false});
+addEventListener('blur',()=>{for(const key of Object.keys(keys))keys[key]=false;joy.x=joy.y=0});
 
-renderer.domElement.addEventListener('click',()=>{
-  if(!mobile&&document.pointerLockElement!==renderer.domElement)renderer.domElement.requestPointerLock?.();
+async function requestMouseLook(){
+  if(mobile||document.pointerLockElement===renderer.domElement)return;
+  try{await renderer.domElement.requestPointerLock?.();}catch{document.body.dataset.mouseLook='drag';}
+}
+renderer.domElement.addEventListener('click',requestMouseLook);
+let mouseDrag=null;
+renderer.domElement.addEventListener('pointerdown',e=>{if(!mobile&&e.button===0)mouseDrag={x:e.clientX,y:e.clientY};});
+addEventListener('pointerup',()=>{mouseDrag=null;});
+addEventListener('pointermove',e=>{
+  if(!mouseDrag||document.pointerLockElement===renderer.domElement)return;
+  camYaw-=(e.clientX-mouseDrag.x)*.0026;
+  camPitch=THREE.MathUtils.clamp(camPitch-(e.clientY-mouseDrag.y)*.0022,-.18,.75);
+  mouseDrag={x:e.clientX,y:e.clientY};
 });
 addEventListener('mousemove',e=>{
   if(document.pointerLockElement!==renderer.domElement)return;
@@ -723,6 +753,9 @@ function drive(dt,v,name){
   const poseBefore=getVehiclePose(v,name);
   const speedBefore=v.speed;
   v.speed=integrateVehicleSpeed(v.speed,throttle,reverse,v,dt,poseBefore.pitch);
+  const surface=track.terrainInfoAt(v.obj.position.x,v.obj.position.z).surface;
+  const resistance=surface==='gravel'||surface==='shoulder'?.45:surface==='terrain'?1.1:0;
+  if(resistance)v.speed=approach(v.speed,0,resistance*Math.abs(v.speed)*dt);
   v.longitudinalAccel=(v.speed-speedBefore)/Math.max(dt,1e-4);
   v.prevSpeed=v.speed;
 
@@ -820,7 +853,7 @@ $('carBtn').addEventListener('pointerdown',e=>{e.preventDefault();toggleVehicle(
 $('jumpBtn').addEventListener('pointerdown',e=>{e.preventDefault();jumpRequest=true});
 $('playBtn').addEventListener('click',()=>{
   $('start').classList.add('hide');renderer.domElement.focus();
-  if(!mobile)renderer.domElement.requestPointerLock?.();
+  requestMouseLook();
 });
 
 const profiler=criarProfiler(renderer,{
@@ -872,7 +905,19 @@ function frame(now){
   else if(mode==='moto')updateCharacterAnimation(rawDt,{pilot:true});
 
   updateCamera(rawDt);
+  const focus=activeTarget().position;
+  sun.target.position.set(focus.x,0,focus.z);
+  sun.position.set(focus.x+35,55,focus.z+20);
   renderer.render(scene,camera);
+  if(qa&&fpsTime+rawDt>=.5){
+    const gl=renderer.getContext(),pixel=new Uint8Array(4),samples=[];
+    for(const y of [.25,.5,.75])for(const x of [.25,.5,.75]){
+      gl.readPixels(Math.floor(gl.drawingBufferWidth*x),Math.floor(gl.drawingBufferHeight*y),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+      samples.push([...pixel]);
+    }
+    renderer.domElement.dataset.pixelProbe=JSON.stringify(samples);
+    document.body.dataset.motion=JSON.stringify({mode,x:focus.x,z:focus.z,yaw:activeTarget().rotation.y});
+  }
   restorePhysicsTransforms();
   profiler.frame(rawDt);
 
@@ -885,7 +930,10 @@ function frame(now){
   }
 }
 
-camera.position.set(0,4,8);requestAnimationFrame(frame);
+camera.position.set(SPAWN.player.x+9,5,SPAWN.player.z-2);
+camera.lookAt(SPAWN.player.x,1.2,SPAWN.player.z);
+track.group.traverse(o=>{if(o.isMesh){o.receiveShadow=true;if(!o.isInstancedMesh&&o.geometry?.type==='BoxGeometry')o.castShadow=true}});
+requestAnimationFrame(frame);
 
 addEventListener('resize',()=>{
   camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();

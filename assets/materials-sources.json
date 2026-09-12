@@ -1,0 +1,42 @@
+[
+  {
+    "license": "CC0-1.0",
+    "dimensionXcm": 110,
+    "download": "https://ambientcg.com/get?file=Concrete034_1K-JPG.zip",
+    "dimensionYcm": 55,
+    "source": "https://ambientcg.com/a/Concrete034",
+    "id": "Concrete034"
+  },
+  {
+    "license": "CC0-1.0",
+    "dimensionXcm": 140,
+    "download": "https://ambientcg.com/get?file=Grass004_1K-JPG.zip",
+    "dimensionYcm": 140,
+    "source": "https://ambientcg.com/a/Grass004",
+    "id": "Grass004"
+  },
+  {
+    "license": "CC0-1.0",
+    "dimensionXcm": 210,
+    "download": "https://ambientcg.com/get?file=Ground037_1K-JPG.zip",
+    "dimensionYcm": 210,
+    "source": "https://ambientcg.com/a/Ground037",
+    "id": "Ground037"
+  },
+  {
+    "license": "CC0-1.0",
+    "dimensionXcm": 0,
+    "download": "https://ambientcg.com/get?file=Bark012_1K-JPG.zip",
+    "dimensionYcm": 0,
+    "source": "https://ambientcg.com/a/Bark012",
+    "id": "Bark012"
+  },
+  {
+    "license": "CC0-1.0",
+    "dimensionXcm": 0,
+    "download": "https://ambientcg.com/get?file=Asphalt012_1K-JPG.zip",
+    "dimensionYcm": 0,
+    "source": "https://ambientcg.com/a/Asphalt012",
+    "id": "Asphalt012"
+  }
+]

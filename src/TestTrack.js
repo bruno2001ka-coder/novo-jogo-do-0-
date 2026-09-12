@@ -1,10 +1,8 @@
 import*as THREE from'three';
+import {createLayout} from './WorldLayout.js';
+import {buildWorldVisuals} from './WorldVisuals.js';
 
 const LIMIT=500;
-// Compatibilidade textual da revisão antiga: estes obstáculos NÃO existem mais no mundo.
-// RAMPA / PLATAFORMA · LOMBADA · GARAGEM · DEGRAUS
-const LEGACY_REVIEW_LABELS='RAMPA / PLATAFORMA · LOMBADA · GARAGEM · DEGRAUS';
-
 // Áreas físicas reservadas para construção. Elas ficam fora da pista de testes e
 // groundHeight() garante que permaneçam planas mesmo quando o terreno crescer.
 const FLAT_AREAS=Object.freeze([
@@ -20,7 +18,7 @@ function inRect(x,z,r){return x>=r.x0&&x<=r.x1&&z>=r.z0&&z<=r.z1}
 function flatAreaAt(x,z){return FLAT_AREAS.find(a=>inRect(x,z,a))||null}
 function mat(color,roughness=.95){return new THREE.MeshStandardMaterial({color,roughness,metalness:0})}
 
-export function criarCampoDeProvas(scene,{debug=false}={}){
+export function criarCampoDeProvas(scene,{debug=false,mobile=false,materials=null}={}){
   const group=new THREE.Group();
   group.name='mundoAberto1000';
   scene.add(group);
@@ -28,10 +26,11 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   const groundMat=mat(0x667d50);
   const roadMat=mat(0x30343a,.92);
   const concreteMat=mat(0x9a9b93,.9);
-  const houseMat=mat(0xf2f0e8,.9);
+  const houseMat=materials?materials.concrete.clone():mat(0xf2f0e8,.9);
+  houseMat.color.set(0xe6e4dc);
   const trimMat=mat(0xd8d3c7,.92);
   const roofMat=mat(0x7a4d35,.88);
-  const woodMat=mat(0x68472e,.9);
+  const woodMat=materials?materials.bark.clone():mat(0x68472e,.9);
   const pathMat=mat(0x817a70,.96);
   const interiorFloorMat=mat(0xa9825d,.88);
   const bathroomFloorMat=mat(0xc8c5bc,.84);
@@ -96,611 +95,14 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     return true;
   }
 
-  const ground=new THREE.Mesh(new THREE.PlaneGeometry(1000,1000,1,1),groundMat);
-  ground.rotation.x=-Math.PI/2;
-  ground.position.y=0;
-  ground.name='chaoMundo1000';
-  group.add(ground);
-
-  // Mantém a grade central original como referência técnica.
+  const layout=createLayout();
+  const roadNetwork=layout.roads;
+  const worldMaterials=materials||{
+    grass:groundMat,asphalt:roadMat,concrete:concreteMat,soil:soilMat,bark:woodMat
+  };
+  const environment=buildWorldVisuals(group,layout,worldMaterials,addBoxCollider,{mobile});
   const baseGrid=new THREE.GridHelper(200,100,0x506246,0x596d4c);
-  baseGrid.position.y=.012;
-  baseGrid.visible=debug;
-  group.add(baseGrid);
-
-  // Grade tecnica do mapa inteiro, visivel apenas com ?debug=1.
-  const worldGrid=new THREE.GridHelper(1000,500,0x455a45,0x4f654f);
-  worldGrid.position.y=.010;
-  worldGrid.visible=debug;
-  worldGrid.name='gradeMundo1000';
-  group.add(worldGrid);
-
-  // Antigo campo de testes removido: sem pista reta, cones, rampas, lombadas,
-  // garagem de teste, parede de impacto ou degraus. Daqui em diante o chão é mundo aberto.
-
-  // ---------------------------------------------------------------------------
-  // MALHA VIÁRIA DE MUNDO ABERTO — 1.000 x 1.000 m
-  // Vias com curvas longas, circuitos, cruzamentos e rotas alternativas.
-  // ---------------------------------------------------------------------------
-  const roadGroup=new THREE.Group();
-  roadGroup.name='malhaViariaMundoAberto';
-  group.add(roadGroup);
-
-  function curveFromXZ(points,closed=false){
-    return new THREE.CatmullRomCurve3(
-      points.map(([x,z])=>new THREE.Vector3(x,0,z)),
-      closed,
-      'centripetal',
-      .40
-    );
-  }
-
-  function pathBand(
-    points,offsetA,offsetB,material,name,
-    y=.045,segments=96,closed=false
-  ){
-    const curve=curveFromXZ(points,closed);
-    const positions=[];
-    const indices=[];
-
-    for(let i=0;i<=segments;i++){
-      const t=i/segments;
-      const p=curve.getPoint(t);
-      const tangent=curve.getTangent(t).normalize();
-      const nx=tangent.z;
-      const nz=-tangent.x;
-
-      positions.push(
-        p.x+nx*offsetA,y,p.z+nz*offsetA,
-        p.x+nx*offsetB,y,p.z+nz*offsetB
-      );
-    }
-
-    for(let i=0;i<segments;i++){
-      const a=i*2,b=a+1,c0=a+2,d=a+3;
-      indices.push(a,c0,b,b,c0,d);
-    }
-
-    const geometry=new THREE.BufferGeometry();
-    geometry.setAttribute(
-      'position',
-      new THREE.Float32BufferAttribute(positions,3)
-    );
-    geometry.setIndex(indices);
-    geometry.computeVertexNormals();
-
-    const mesh=new THREE.Mesh(geometry,material);
-    mesh.name=name;
-    roadGroup.add(mesh);
-    return mesh;
-  }
-
-  function buildRoad({
-    id,points,width=7.6,material=roadMat,
-    sidewalk=true,sidewalkWidth=1.20,line=true,
-    closed=false,segments=96
-  }){
-    pathBand(
-      points,-width/2,width/2,material,
-      `via-${id}`,.042,segments,closed
-    );
-
-    if(sidewalk){
-      const gap=.18;
-      pathBand(
-        points,width/2+gap,width/2+gap+sidewalkWidth,
-        sidewalkMat,`calcada-${id}-direita`,
-        .060,segments,closed
-      );
-      pathBand(
-        points,-width/2-gap-sidewalkWidth,-width/2-gap,
-        sidewalkMat,`calcada-${id}-esquerda`,
-        .060,segments,closed
-      );
-      pathBand(
-        points,width/2+.05,width/2+.13,
-        curbRoadMat,`meioFio-${id}-direita`,
-        .071,segments,closed
-      );
-      pathBand(
-        points,-width/2-.13,-width/2-.05,
-        curbRoadMat,`meioFio-${id}-esquerda`,
-        .071,segments,closed
-      );
-    }
-
-    if(line){
-      pathBand(
-        points,-.055,.055,roadLineMat,
-        `eixo-${id}`,.067,segments,closed
-      );
-    }
-  }
-
-  // Topologia de alto nível: vários caminhos fecham circuitos entre si.
-  const roadNetwork=Object.freeze([
-    Object.freeze({
-      id:'anel-perimetral',
-      type:'asfalto',width:8.6,sidewalks:true,closed:true,segments:220,
-      connects:['sul','oeste','norte','leste'],
-      points:Object.freeze([
-        Object.freeze([-172,-202]),
-        Object.freeze([-72,-226]),
-        Object.freeze([55,-224]),
-        Object.freeze([158,-196]),
-        Object.freeze([215,-128]),
-        Object.freeze([226,-28]),
-        Object.freeze([214,78]),
-        Object.freeze([177,158]),
-        Object.freeze([92,218]),
-        Object.freeze([-18,228]),
-        Object.freeze([-126,211]),
-        Object.freeze([-205,151]),
-        Object.freeze([-228,60]),
-        Object.freeze([-225,-48]),
-        Object.freeze([-205,-138])
-      ])
-    }),
-    Object.freeze({
-      id:'eixo-central-s',
-      type:'asfalto',width:9.2,sidewalks:true,closed:false,segments:150,
-      connects:['nucleo-inicial','cidade','anel-perimetral'],
-      points:Object.freeze([
-        Object.freeze([0,18]),
-        Object.freeze([9,38]),
-        Object.freeze([26,60]),
-        Object.freeze([34,84]),
-        Object.freeze([18,108]),
-        Object.freeze([-8,126]),
-        Object.freeze([-18,149]),
-        Object.freeze([2,171]),
-        Object.freeze([34,187]),
-        Object.freeze([69,200]),
-        Object.freeze([95,220])
-      ])
-    }),
-    Object.freeze({
-      id:'travessia-sul',
-      type:'asfalto',width:8.2,sidewalks:true,closed:false,segments:150,
-      connects:['anel-oeste','centro-sul','anel-leste'],
-      points:Object.freeze([
-        Object.freeze([-211,-122]),
-        Object.freeze([-174,-105]),
-        Object.freeze([-128,-86]),
-        Object.freeze([-76,-68]),
-        Object.freeze([-20,-57]),
-        Object.freeze([36,-62]),
-        Object.freeze([88,-80]),
-        Object.freeze([136,-103]),
-        Object.freeze([190,-131]),
-        Object.freeze([214,-128])
-      ])
-    }),
-    Object.freeze({
-      id:'travessia-norte',
-      type:'asfalto',width:8.4,sidewalks:true,closed:false,segments:140,
-      connects:['expansao-oeste','eixo-central-s','cidade'],
-      points:Object.freeze([
-        Object.freeze([-205,151]),
-        Object.freeze([-166,139]),
-        Object.freeze([-121,132]),
-        Object.freeze([-74,136]),
-        Object.freeze([-24,151]),
-        Object.freeze([25,166]),
-        Object.freeze([73,176]),
-        Object.freeze([121,181]),
-        Object.freeze([177,177])
-      ])
-    }),
-    Object.freeze({
-      id:'diagonal-oeste',
-      type:'asfalto',width:7.6,sidewalks:true,closed:false,segments:120,
-      connects:['casa','travessia-norte','anel-oeste'],
-      points:Object.freeze([
-        Object.freeze([-26,31]),
-        Object.freeze([-52,51]),
-        Object.freeze([-83,72]),
-        Object.freeze([-115,94]),
-        Object.freeze([-149,119]),
-        Object.freeze([-182,143]),
-        Object.freeze([-205,151])
-      ])
-    }),
-    Object.freeze({
-      id:'diagonal-leste',
-      type:'asfalto',width:7.8,sidewalks:true,closed:false,segments:135,
-      connects:['travessia-sul','fazenda-leste','cidade'],
-      points:Object.freeze([
-        Object.freeze([37,-62]),
-        Object.freeze([58,-28]),
-        Object.freeze([82,7]),
-        Object.freeze([107,43]),
-        Object.freeze([128,77]),
-        Object.freeze([146,113]),
-        Object.freeze([160,148]),
-        Object.freeze([177,177])
-      ])
-    }),
-    Object.freeze({
-      id:'acesso-casa',
-      type:'asfalto',width:6.8,sidewalks:true,closed:false,segments:70,
-      connects:['casa','eixo-central-s'],
-      points:Object.freeze([
-        Object.freeze([-21.7,26.4]),
-        Object.freeze([-16,27]),
-        Object.freeze([-10,30]),
-        Object.freeze([-4,35]),
-        Object.freeze([3,41]),
-        Object.freeze([12,49]),
-        Object.freeze([26,60])
-      ])
-    }),
-    Object.freeze({
-      id:'acesso-fazenda-leste',
-      type:'cascalho',width:7.2,sidewalks:true,closed:false,segments:110,
-      connects:['eixo-central-s','fazenda-leste'],
-      points:Object.freeze([
-        Object.freeze([-8,126]),
-        Object.freeze([20,123]),
-        Object.freeze([51,117]),
-        Object.freeze([84,108]),
-        Object.freeze([116,99]),
-        Object.freeze([146,94]),
-        Object.freeze([176,96])
-      ])
-    }),
-    Object.freeze({
-      id:'acesso-fazenda-sul',
-      type:'cascalho',width:7.0,sidewalks:true,closed:false,segments:90,
-      connects:['travessia-sul','fazenda-sul'],
-      points:Object.freeze([
-        Object.freeze([88,-80]),
-        Object.freeze([103,-98]),
-        Object.freeze([119,-119]),
-        Object.freeze([132,-143]),
-        Object.freeze([145,-169]),
-        Object.freeze([151,-192])
-      ])
-    }),
-    Object.freeze({
-      id:'acesso-fazenda-oeste',
-      type:'cascalho',width:6.9,sidewalks:true,closed:false,segments:80,
-      connects:['anel-perimetral','fazenda-oeste'],
-      points:Object.freeze([
-        Object.freeze([-211,-122]),
-        Object.freeze([-201,-134]),
-        Object.freeze([-190,-147]),
-        Object.freeze([-179,-160]),
-        Object.freeze([-170,-177])
-      ])
-    }),
-    Object.freeze({
-      id:'rota-rural-sudeste',
-      type:'cascalho',width:6.6,sidewalks:false,closed:false,segments:120,
-      connects:['fazenda-sul','fazenda-leste','anel-leste'],
-      points:Object.freeze([
-        Object.freeze([151,-192]),
-        Object.freeze([177,-175]),
-        Object.freeze([202,-146]),
-        Object.freeze([219,-105]),
-        Object.freeze([225,-54]),
-        Object.freeze([219,-4]),
-        Object.freeze([207,42]),
-        Object.freeze([190,76]),
-        Object.freeze([176,96])
-      ])
-    }),
-    Object.freeze({
-      id:'avenida-inicial',
-      type:'asfalto',width:10.2,sidewalks:true,closed:false,segments:130,
-      connects:['bairro-oeste','eixo-central-s','bairro-leste'],
-      points:Object.freeze([
-        Object.freeze([-170,8]),Object.freeze([-110,8]),
-        Object.freeze([-55,8]),Object.freeze([0,8]),
-        Object.freeze([55,8]),Object.freeze([115,8]),
-        Object.freeze([180,8])
-      ])
-    }),
-    Object.freeze({
-      id:'rua-bairro-70',
-      type:'asfalto',width:7.6,sidewalks:true,closed:false,segments:110,
-      connects:['bairro-oeste','eixo-central-s','bairro-leste'],
-      points:Object.freeze([
-        Object.freeze([-120,70]),Object.freeze([-65,70]),
-        Object.freeze([-8,70]),Object.freeze([52,70]),
-        Object.freeze([112,69]),Object.freeze([165,68])
-      ])
-    }),
-    Object.freeze({
-      id:'rua-bairro-118',
-      type:'asfalto',width:7.6,sidewalks:true,closed:false,segments:110,
-      connects:['travessia-norte','eixo-central-s','diagonal-leste'],
-      points:Object.freeze([
-        Object.freeze([-130,116]),Object.freeze([-75,118]),
-        Object.freeze([-18,120]),Object.freeze([45,119]),
-        Object.freeze([105,117]),Object.freeze([160,114])
-      ])
-    }),
-    Object.freeze({
-      id:'rua-oeste',
-      type:'asfalto',width:7.2,sidewalks:true,closed:false,segments:90,
-      connects:['avenida-inicial','rua-bairro-70','rua-bairro-118'],
-      points:Object.freeze([
-        Object.freeze([-92,8]),Object.freeze([-91,52]),
-        Object.freeze([-90,82]),Object.freeze([-92,116]),
-        Object.freeze([-105,145])
-      ])
-    }),
-    Object.freeze({
-      id:'rua-leste',
-      type:'asfalto',width:7.4,sidewalks:true,closed:false,segments:95,
-      connects:['avenida-inicial','rua-bairro-70','rua-bairro-118'],
-      points:Object.freeze([
-        Object.freeze([58,8]),Object.freeze([58,52]),
-        Object.freeze([57,82]),Object.freeze([56,118]),
-        Object.freeze([67,155])
-      ])
-    }),
-    Object.freeze({
-      id:'rua-leste-2',
-      type:'asfalto',width:7.2,sidewalks:true,closed:false,segments:90,
-      connects:['avenida-inicial','rua-bairro-70','rua-bairro-118'],
-      points:Object.freeze([
-        Object.freeze([118,8]),Object.freeze([117,50]),
-        Object.freeze([116,81]),Object.freeze([115,116]),
-        Object.freeze([126,153])
-      ])
-    }),
-    Object.freeze({
-      id:'anel-externo',
-      type:'cascalho',width:7.4,sidewalks:false,closed:true,segments:180,
-      connects:['ligacao-leste','ligacao-sul','ligacao-oeste'],
-      points:Object.freeze([
-        Object.freeze([-440,-360]),Object.freeze([-260,-445]),
-        Object.freeze([20,-460]),Object.freeze([300,-430]),
-        Object.freeze([455,-300]),Object.freeze([470,-40]),
-        Object.freeze([455,220]),Object.freeze([330,405]),
-        Object.freeze([50,455]),Object.freeze([-240,440]),
-        Object.freeze([-445,320]),Object.freeze([-470,60]),
-        Object.freeze([-455,-170])
-      ])
-    }),
-    Object.freeze({
-      id:'ligacao-leste',
-      type:'cascalho',width:6.8,sidewalks:false,closed:false,segments:70,
-      connects:['rota-rural-sudeste','anel-externo'],
-      points:Object.freeze([
-        Object.freeze([176,96]),Object.freeze([245,125]),
-        Object.freeze([320,150]),Object.freeze([390,190]),
-        Object.freeze([450,220])
-      ])
-    }),
-    Object.freeze({
-      id:'ligacao-sul',
-      type:'cascalho',width:6.8,sidewalks:false,closed:false,segments:70,
-      connects:['acesso-fazenda-sul','anel-externo'],
-      points:Object.freeze([
-        Object.freeze([151,-192]),Object.freeze([135,-255]),
-        Object.freeze([105,-330]),Object.freeze([70,-405])
-      ])
-    }),
-    Object.freeze({
-      id:'ligacao-oeste',
-      type:'cascalho',width:6.8,sidewalks:false,closed:false,segments:70,
-      connects:['acesso-fazenda-oeste','anel-externo'],
-      points:Object.freeze([
-        Object.freeze([-170,-177]),Object.freeze([-255,-225]),
-        Object.freeze([-345,-285]),Object.freeze([-445,-320])
-      ])
-    }),
-  ]);
-
-  for(const roadDef of roadNetwork){
-    buildRoad({
-      id:roadDef.id,
-      points:roadDef.points,
-      width:roadDef.width,
-      material:roadDef.type==='cascalho'?gravelMat:roadMat,
-      sidewalk:roadDef.sidewalks,
-      sidewalkWidth:roadDef.type==='cascalho'?1.0:1.25,
-      line:roadDef.type==='asfalto',
-      closed:roadDef.closed,
-      segments:roadDef.segments
-    });
-  }
-
-  // Asfalto de acabamento cobre calcadas e faixas que se cruzariam visualmente.
-  const urbanIntersections=Object.freeze([
-    Object.freeze([-92,8]),Object.freeze([0,13]),
-    Object.freeze([58,8]),Object.freeze([118,8]),
-    Object.freeze([-90,70]),Object.freeze([30,70]),
-    Object.freeze([57,70]),Object.freeze([116,70]),
-    Object.freeze([-92,118]),Object.freeze([-5,119]),
-    Object.freeze([56,118]),Object.freeze([115,118])
-  ]);
-  const intersectionGeometry=new THREE.CylinderGeometry(7.4,7.4,.035,28);
-  for(const [x,z] of urbanIntersections){
-    const patch=new THREE.Mesh(intersectionGeometry,roadMat);
-    patch.position.set(x,.083,z);
-    patch.name='cruzamentoUrbano';
-    roadGroup.add(patch);
-  }
-
-  // Detalhes viarios leves e independentes da fisica dos atores.
-  const detailGroup=new THREE.Group();
-  detailGroup.name='postesEArvores';
-  roadGroup.add(detailGroup);
-
-  const poleMaterial=mat(0x3b4142,.74);
-  const armMaterial=mat(0x51585a,.72);
-  const lampMaterial=new THREE.MeshStandardMaterial({
-    color:0xffedb0,emissive:0xffbd55,emissiveIntensity:1.5,roughness:.3
-  });
-  const trunkMaterial=mat(0x5b3b26,.98);
-  const crownMaterial=mat(0x2e6137,.96);
-  const poleGeometry=new THREE.CylinderGeometry(.065,.095,4.5,8);
-  const armGeometry=new THREE.BoxGeometry(1.05,.07,.07);
-  const lampGeometry=new THREE.SphereGeometry(.16,8,6);
-  const trunkGeometry=new THREE.CylinderGeometry(.10,.16,1.35,8);
-  const crownGeometry=new THREE.SphereGeometry(1,10,8);
-  const maxPoles=54,maxTrees=96;
-  const poles=new THREE.InstancedMesh(poleGeometry,poleMaterial,maxPoles);
-  const arms=new THREE.InstancedMesh(armGeometry,armMaterial,maxPoles);
-  const lamps=new THREE.InstancedMesh(lampGeometry,lampMaterial,maxPoles);
-  const trunks=new THREE.InstancedMesh(trunkGeometry,trunkMaterial,maxTrees);
-  const lowerCrowns=new THREE.InstancedMesh(crownGeometry,crownMaterial,maxTrees);
-  const upperCrowns=new THREE.InstancedMesh(crownGeometry,crownMaterial,maxTrees);
-  const detailDummy=new THREE.Object3D();
-  let poleCount=0;
-  let treeCount=0;
-
-  // Primeiro detalha o bairro inicial; assim a melhoria aparece ao entrar no jogo.
-  const detailRoads=[...roadNetwork].sort((a,b)=>{
-    const urban=id=>id==='avenida-inicial'||id.startsWith('rua-');
-    return Number(urban(b.id))-Number(urban(a.id));
-  });
-
-  function segmentDistanceSq(px,pz,ax,az,bx,bz){
-    const dx=bx-ax,dz=bz-az;
-    const lengthSq=dx*dx+dz*dz;
-    const t=lengthSq>0?clamp01(((px-ax)*dx+(pz-az)*dz)/lengthSq):0;
-    const x=ax+dx*t,z=az+dz*t;
-    return (px-x)*(px-x)+(pz-z)*(pz-z);
-  }
-
-  function clamp01(value){return Math.max(0,Math.min(1,value))}
-
-  function detailPositionBlocked(x,z,road,kind){
-    // Area de aparicao e corredor da casa precisam permanecer totalmente livres.
-    if(x*x+(z-22)*(z-22)<22*22)return true;
-    if(x>-60&&x<-8&&z>17&&z<58)return true;
-
-    const junctionClearance=kind==='tree'?12:9;
-    for(const [jx,jz] of urbanIntersections){
-      if((x-jx)*(x-jx)+(z-jz)*(z-jz)<junctionClearance*junctionClearance){
-        return true;
-      }
-    }
-
-    const objectPadding=kind==='tree'?1.8:.65;
-    for(const other of roadNetwork){
-      if(other===road)continue;
-      const edge=other.width/2+(other.sidewalks?1.65:.5)+objectPadding;
-      for(let i=1;i<other.points.length;i++){
-        const [ax,az]=other.points[i-1],[bx,bz]=other.points[i];
-        if(segmentDistanceSq(x,z,ax,az,bx,bz)<edge*edge)return true;
-      }
-    }
-    return false;
-  }
-
-  for(const road of detailRoads){
-    const points=road.points;
-    if(road.type==='asfalto'){
-      for(let i=1;i<points.length-1&&poleCount<maxPoles;i+=2){
-        const current=points[i],previous=points[i-1],next=points[i+1]||current;
-        const tangent=new THREE.Vector3(
-          next[0]-previous[0],0,next[1]-previous[1]
-        ).normalize();
-        const side=i%2?-1:1,nx=tangent.z*side,nz=-tangent.x*side;
-        const poleOffset=road.width/2+(road.sidewalks?2.2:1.2);
-        const px=current[0]+nx*poleOffset,pz=current[1]+nz*poleOffset;
-        if(detailPositionBlocked(px,pz,road,'pole'))continue;
-
-        detailDummy.position.set(px,2.25,pz);
-        detailDummy.rotation.set(0,0,0);
-        detailDummy.scale.set(1,1,1);
-        detailDummy.updateMatrix();
-        poles.setMatrixAt(poleCount,detailDummy.matrix);
-
-        detailDummy.position.set(
-          px-nx*.5,4.35,pz-nz*.5
-        );
-        detailDummy.rotation.set(0,Math.atan2(tangent.x,tangent.z),0);
-        detailDummy.scale.set(1,1,1);
-        detailDummy.updateMatrix();
-        arms.setMatrixAt(poleCount,detailDummy.matrix);
-
-        detailDummy.position.set(
-          px-nx*1.15,4.22,pz-nz*1.15
-        );
-        detailDummy.rotation.set(0,0,0);
-        detailDummy.scale.set(1.35,.55,1.35);
-        detailDummy.updateMatrix();
-        lamps.setMatrixAt(poleCount,detailDummy.matrix);
-        poleCount++;
-      }
-    }
-
-    for(let i=0;i<points.length&&treeCount<maxTrees;i+=2){
-      const current=points[i],previous=points[Math.max(0,i-1)];
-      const next=points[Math.min(points.length-1,i+1)];
-      const tangent=new THREE.Vector3(
-        next[0]-previous[0],0,next[1]-previous[1]
-      ).normalize();
-      const side=i%2?-1:1,nx=tangent.z*side,nz=-tangent.x*side;
-      const offset=road.width/2+(road.sidewalks?5.0:3.3);
-      const size=.78+(treeCount%4)*.11;
-      const x=current[0]+nx*offset,z=current[1]+nz*offset;
-      if(detailPositionBlocked(x,z,road,'tree'))continue;
-
-      detailDummy.position.set(x,.68*size,z);
-      detailDummy.rotation.set(0,(treeCount%7)*.43,0);
-      detailDummy.scale.set(size,size,size);
-      detailDummy.updateMatrix();
-      trunks.setMatrixAt(treeCount,detailDummy.matrix);
-
-      detailDummy.position.set(x,1.68*size,z);
-      detailDummy.rotation.set(0,(treeCount%5)*.57,0);
-      detailDummy.scale.set(.95*size,1.12*size,.95*size);
-      detailDummy.updateMatrix();
-      lowerCrowns.setMatrixAt(treeCount,detailDummy.matrix);
-
-      detailDummy.position.set(x,2.42*size,z);
-      detailDummy.rotation.set(0,(treeCount%6)*.48,0);
-      detailDummy.scale.set(.68*size,.82*size,.68*size);
-      detailDummy.updateMatrix();
-      upperCrowns.setMatrixAt(treeCount,detailDummy.matrix);
-      treeCount++;
-    }
-  }
-
-  poles.count=arms.count=lamps.count=poleCount;
-  trunks.count=lowerCrowns.count=upperCrowns.count=treeCount;
-  for(const mesh of[poles,arms,lamps,trunks,lowerCrowns,upperCrowns]){
-    mesh.instanceMatrix.needsUpdate=true;
-    mesh.frustumCulled=false;
-    detailGroup.add(mesh);
-  }
-
-  // Entroncamento amplo da futura cidade.
-  const cityReserve=new THREE.Mesh(
-    new THREE.CylinderGeometry(14.5,14.5,.045,36),
-    roadMat
-  );
-  cityReserve.position.set(95,.025,220);
-  cityReserve.name='entroncamentoCidadeFutura';
-  roadGroup.add(cityReserve);
-
-  // Balizadores eficientes no anel, usando instancing em vez de dezenas de meshes.
-  const reflectorGeo=new THREE.BoxGeometry(.10,.32,.10);
-  const reflectorMat=mat(0xd8c56f,.78);
-  const reflectors=new THREE.InstancedMesh(reflectorGeo,reflectorMat,36);
-  const reflectorDummy=new THREE.Object3D();
-  const ringCurve=curveFromXZ(roadNetwork[0].points,true);
-  for(let i=0;i<36;i++){
-    const t=i/36;
-    const p=ringCurve.getPoint(t);
-    const tangent=ringCurve.getTangent(t).normalize();
-    const nx=tangent.z,nz=-tangent.x;
-    reflectorDummy.position.set(p.x+nx*5.2,.16,p.z+nz*5.2);
-    reflectorDummy.rotation.y=Math.atan2(tangent.x,tangent.z);
-    reflectorDummy.updateMatrix();
-    reflectors.setMatrixAt(i,reflectorDummy.matrix);
-  }
-  reflectors.instanceMatrix.needsUpdate=true;
-  reflectors.name='balizadoresAnelViario';
-  roadGroup.add(reflectors);
+  baseGrid.position.y=.20;baseGrid.visible=debug;group.add(baseGrid);
 
   // ---------------------------------------------------------------------------
   // PRIMEIRA ÁREA REAL DO MUNDO: CASA RESIDENCIAL + ACESSO + MUROS
@@ -726,15 +128,6 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     houseGroup.add(mesh);
     return mesh;
   }
-
-  // Acesso residencial: liga a pista diretamente à entrada lateral aberta do lote.
-  const driveway=new THREE.Mesh(
-    new THREE.BoxGeometry(13.4,.045,4.8),
-    pathMat
-  );
-  driveway.position.set(-15.55,.0225,26.35);
-  driveway.name='acessoCasa';
-  houseGroup.add(driveway);
 
   const HOUSE={
     cx:-35,cz:36,w:13,d:9.5,h:2.8,t:.28,
@@ -1660,12 +1053,6 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
       if(slidingGateState.hold===0)slidingGateState.target=0;
     }
 
-    // Remove o bloqueio assim que o motor começa a abrir.
-    if(slidingGateState.target===1&&slidingGateCollider){
-      removeCollider(slidingGateCollider);
-      slidingGateCollider=null;
-    }
-
     const speed=1-Math.exp(-4.2*dt);
     slidingGateState.progress=THREE.MathUtils.lerp(
       slidingGateState.progress,
@@ -1688,22 +1075,11 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
     gateLamp.material.emissiveIntensity=moving?3.2:.65;
     gateLamp.scale.setScalar(moving?1.08:1);
 
-    // Colisor só volta depois que o portão terminou de fechar.
-    if(
-      slidingGateState.target===0&&
-      slidingGateState.progress<.015&&
-      !slidingGateCollider
-    ){
-      slidingGateCollider=addBoxCollider({
-        cx:SLIDING_GATE.x,
-        cz:SLIDING_GATE.closedZ,
-        w:.22,
-        d:SLIDING_GATE.length,
-        h:SLIDING_GATE.h,
-        label:'portao-correr-fechado',
-        owner:'casa-portao'
-      });
-    }
+    // O volume fisico acompanha a folha, inclusive durante a abertura.
+    slidingGateCollider.z0=gateGroup.position.z-SLIDING_GATE.length/2;
+    slidingGateCollider.z1=gateGroup.position.z+SLIDING_GATE.length/2;
+    const gateDebug=colliderDebug.get(slidingGateCollider.id);
+    if(gateDebug){gateDebug.box.min.z=slidingGateCollider.z0;gateDebug.box.max.z=slidingGateCollider.z1;}
   }
 
   // ---------------------------------------------------------------------------
@@ -1909,11 +1285,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   }
 
   function groundHeight(x,z){
-    const flat=flatAreaAt(x,z);
-    if(flat)return flat.y;
-    // Mundo-base atual é plano; relevo poderá ser introduzido depois por regiões,
-    // sem ressuscitar os obstáculos artificiais do antigo campo de provas.
-    return 0;
+    return layout.groundHeight(x,z);
   }
 
   function terrainInfoAt(x,z){
@@ -1923,7 +1295,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
       zone:zoneAt(x,z),
       buildable:!!flat,
       flatArea:flat?.id||null,
-      surface:flat?'construction-pad':'terrain',
+      surface:layout.surfaceAt(x,z)?.name||(flat?'construction-pad':'terrain'),
     };
   }
 
@@ -2190,7 +1562,7 @@ export function criarCampoDeProvas(scene,{debug=false}={}){
   }
 
   return{
-    group,colliders,groundHeight,moveXZ,moveVehicle,zoneAt,
+    group,colliders,groundHeight,moveXZ,moveVehicle,zoneAt,layout,environment,
     terrainPose,twoWheelPose,cameraSafePosition,vehicleBlocked:blockedOBB,vehicleTurnAllowed,limit:LIMIT,
     worldSize:LIMIT*2,flatAreas:FLAT_AREAS,roadNetwork,terrainInfoAt,canPlaceRect,addBoxCollider,removeCollider,updateWorld
   };

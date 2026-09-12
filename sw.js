@@ -1,4 +1,4 @@
-const BUILD='36';
+const BUILD='37';
 const CACHE=`quintal-clean-release-${BUILD}`;
 const BASE=new URL('./',self.location.href);
 const url=path=>new URL(path,BASE).href;

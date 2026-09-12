@@ -808,7 +808,8 @@ function drive(dt,v,name){
 
 function updateCamera(dt){
   const target=activeTarget().position;
-  const h=mode==='foot'?1.25:1.05,dist=mode==='foot'?5.2:7.5;
+  const h=mode==='foot'?1.25:1.05;
+  const dist=(mode==='foot'?5.2:7.5)*Math.max(1,(mode==='foot'?.62:.8)/camera.aspect);
   const cp=Math.cos(camPitch),sp=Math.sin(camPitch);
   const pivot=new THREE.Vector3(target.x,target.y+h,target.z);
   const desired=new THREE.Vector3(

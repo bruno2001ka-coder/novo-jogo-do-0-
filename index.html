@@ -44,10 +44,10 @@ body.driving #jumpBtn{display:none}
   <button class="action" id="carBtn">CARRO</button>
   <button class="action" id="jumpBtn">PULAR</button>
 </div>
-<script type="module" src="./src/main.js?v=36"></script>
+<script type="module" src="./src/main.js?v=37"></script>
 <script>
 if('serviceWorker' in navigator&&location.protocol.startsWith('http')&&document.querySelector('script[type="module"]').src.includes('/releases/')){
-  addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=36').then(r=>r.update()).catch(()=>{}));
+  addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=37').then(r=>r.update()).catch(()=>{}));
 }
 </script>
 </body>

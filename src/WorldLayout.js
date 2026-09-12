@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import '../vendor/polygon-clipping.umd.js';
 
 const clip=globalThis.polygonClipping;
-export const BUILD='36';
+export const BUILD='37';
 export const LOT={x0:-44,x1:-22,z0:24,z1:46};
 export const SPAWN={player:{x:-11.5,z:18},car:{x:-8,z:16},moto:{x:-8,z:20.5}};
 export const rect=(x0,z0,x1,z1)=>[[[x0,z0],[x1,z0],[x1,z1],[x0,z1],[x0,z0]]];

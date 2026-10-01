@@ -1,0 +1,12 @@
+# Godot
+.godot/
+*.translation
+export_presets.cfg
+export/
+# arquivos gerados pelos scripts do Blender: só o herói é versionado (os demais se regeneram com build_characters.py)
+tools/blender/blend/*
+!tools/blender/blend/hero.blend
+tools/blender/__pycache__/
+tools/preview/__pycache__/
+__pycache__/
+*.pyc
